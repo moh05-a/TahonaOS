@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tahona.Api/Tahona.Api.csproj" />
+    <Project Path="src/Tahona.Application/Tahona.Application.csproj" />
+    <Project Path="src/Tahona.Domain/Tahona.Domain.csproj" />
+    <Project Path="src/Tahona.Infrastructure/Tahona.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tahona.Tests/Tahona.Tests.csproj" />
+  </Folder>
+</Solution>

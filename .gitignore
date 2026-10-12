@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+backend/src/Tahona.Api/storage/
+
+# Node
+node_modules/
+dist/
+*.log
+.vite/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/

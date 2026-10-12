@@ -1,0 +1,63 @@
+# Local development:   docker compose up -d db            (then run the API and Vite yourself)
+# Full stack:          docker compose --profile full up -d --build   → http://localhost:8080
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: tahona-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tahona}
+      POSTGRES_USER: ${POSTGRES_USER:-tahona}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      TZ: UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - tahona-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tahona} -d ${POSTGRES_DB:-tahona}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: tahona-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB:-tahona};Username=${POSTGRES_USER:-tahona};Password=${POSTGRES_PASSWORD}
+      Jwt__Secret: ${JWT__SECRET:?Set JWT__SECRET in .env}
+      Cors__Origins: http://localhost:8080
+      Seed__DemoData: ${SEED__DEMODATA:-false}
+      Seed__DemoPassword: ${SEED__DEMOPASSWORD:-}
+      Ai__Provider: ${AI__PROVIDER:-gemini}
+      Ai__ApiKey: ${AI__APIKEY:-}
+      Ai__Model: ${AI__MODEL:-}
+      WhatsApp__AccessToken: ${WHATSAPP__ACCESSTOKEN:-}
+      WhatsApp__PhoneNumberId: ${WHATSAPP__PHONENUMBERID:-}
+      WhatsApp__WebhookVerifyToken: ${WHATSAPP__WEBHOOKVERIFYTOKEN:-}
+      WhatsApp__AppSecret: ${WHATSAPP__APPSECRET:-}
+      Automation__Enabled: ${AUTOMATION__ENABLED:-true}
+    volumes:
+      - tahona-files:/data/storage
+
+  web:
+    profiles: ["full"]
+    build:
+      context: frontend
+    container_name: tahona-web
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "8080:80"
+
+volumes:
+  tahona-pgdata:
+  tahona-files:
