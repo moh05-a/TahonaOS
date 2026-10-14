@@ -25,6 +25,13 @@ public class Invoice : TenantEntity, IAuditable
     public decimal Balance { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// True for a balance carried over from the clinic's previous system. It states what the patient owed on the
+    /// import date; it is not treatment performed in TahonaOS and is excluded from production figures.
+    /// </summary>
+    public bool IsOpeningBalance { get; set; }
+    public Guid? ImportBatchId { get; set; }
+
     public ICollection<InvoiceItem> Items { get; set; } = [];
     public ICollection<Payment> Payments { get; set; } = [];
 }
@@ -43,7 +50,11 @@ public class InvoiceItem : TenantEntity
     public decimal Total { get; set; }
 }
 
-public class Payment : TenantEntity, IAuditable
+/// <summary>
+/// A payment or refund. An entry made by mistake is cancelled, not erased: the row and its receipt number stay,
+/// marked <see cref="IsDeleted"/> with a reason, and stop counting towards any total.
+/// </summary>
+public class Payment : TenantEntity, IAuditable, ISoftDelete
 {
     public string ReceiptNumber { get; set; } = default!;
     public Guid PatientId { get; set; }
@@ -60,6 +71,13 @@ public class Payment : TenantEntity, IAuditable
     public Guid? ReceivedById { get; set; }
     public User? ReceivedBy { get; set; }
     public Guid? RefundOfPaymentId { get; set; }
+
+    /// <summary>True for an entry cancelled as a mistake. <see cref="DeletedAt"/> is when it was cancelled.</summary>
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public string? CancelReason { get; set; }
+    public Guid? CancelledById { get; set; }
+    public User? CancelledBy { get; set; }
 
     /// <summary>Set when this payment is attributed to a recovery follow-up (counts as recovered revenue).</summary>
     public Guid? RecoveredFollowUpId { get; set; }

@@ -33,13 +33,25 @@ public class Patient : TenantEntity, ISoftDelete, IAuditable
     public decimal? InsuranceCoveragePercent { get; set; }
 
     public string PreferredLanguage { get; set; } = "ar";
+
+    public MessagingConsent MessagingConsent { get; set; } = MessagingConsent.Unknown;
+    public DateTime? MessagingConsentAt { get; set; }
+    /// <summary>Who or what recorded the consent state: a staff member's name, "whatsapp-reply", "import".</summary>
+    public string? MessagingConsentSource { get; set; }
+
     public PatientStatus Status { get; set; } = PatientStatus.Active;
     public DateTime RegisteredAt { get; set; }
     public string? ReferralSource { get; set; }
     public Guid? PrimaryDentistId { get; set; }
     public Dentist? PrimaryDentist { get; set; }
 
-    /// <summary>Denormalised: last completed visit, maintained by the appointment service.</summary>
+    /// <summary>The patient's identifier in the system it was imported from, kept verbatim.</summary>
+    public string? ExternalId { get; set; }
+    /// <summary>Name of the source the record was imported from; null for patients registered in TahonaOS.</summary>
+    public string? SourceSystem { get; set; }
+    public Guid? ImportBatchId { get; set; }
+
+    /// <summary>Denormalised: last completed visit, maintained by the appointment service (or taken from an import).</summary>
     public DateTime? LastVisitAt { get; set; }
 
     public bool IsDeleted { get; set; }

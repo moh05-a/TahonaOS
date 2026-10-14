@@ -6,7 +6,12 @@ namespace Tahona.Infrastructure.Services;
 public class StorageOptions
 {
     public const string Section = "Storage";
+    /// <summary>"local" (a folder on the server or a mounted volume) or "s3" (an S3-compatible bucket).</summary>
+    public string Provider { get; set; } = "local";
     public string Root { get; set; } = "storage";
+    public S3Options S3 { get; set; } = new();
+
+    public bool UseS3 => string.Equals(Provider?.Trim(), "s3", StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -16,6 +21,8 @@ public class StorageOptions
 public sealed class LocalFileStorage(IOptions<StorageOptions> options) : IFileStorage
 {
     private readonly string _root = Path.GetFullPath(options.Value.Root);
+
+    public string Name => "Local disk";
 
     public async Task<string> SaveAsync(Guid clinicId, Guid patientId, string fileName, Stream content, CancellationToken ct)
     {
@@ -43,7 +50,9 @@ public sealed class LocalFileStorage(IOptions<StorageOptions> options) : IFileSt
     private string Resolve(string relative)
     {
         var full = Path.GetFullPath(Path.Combine(_root, relative));
-        if (!full.StartsWith(_root, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Invalid storage path.");
+        // Compare against the root plus a separator, so "storage2/…" can never pass as being inside "storage".
+        var boundary = _root.EndsWith(Path.DirectorySeparatorChar) ? _root : _root + Path.DirectorySeparatorChar;
+        if (!full.StartsWith(boundary, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("Invalid storage path.");
         return full;
     }
 }

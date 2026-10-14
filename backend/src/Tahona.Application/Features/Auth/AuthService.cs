@@ -2,7 +2,9 @@ using FluentValidation;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Tahona.Application.Common;
+using Tahona.Application.Features.Provisioning;
 using Tahona.Domain.Entities;
+using Tahona.Domain.Enums;
 
 namespace Tahona.Application.Features.Auth;
 
@@ -10,7 +12,9 @@ public record LoginRequest(string Email, string Password);
 
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
-public record ClinicInfoDto(Guid Id, string Name, string? NameAr, string Currency, string TimeZone, string DefaultLanguage);
+/// <param name="ReadOnly">True when the subscription is cancelled or suspended: records can be read and exported, not changed.</param>
+public record ClinicInfoDto(Guid Id, string Name, string? NameAr, string Currency, string TimeZone, string DefaultLanguage,
+    string SubscriptionPlan, SubscriptionStatus SubscriptionStatus, DateTime? TrialEndsAt, DateTime? PaidUntil, bool ReadOnly);
 
 public record UserProfileDto(
     Guid Id, string Email, string FullName, string? FullNameAr, string Role,
@@ -32,10 +36,7 @@ public class ChangePasswordRequestValidator : AbstractValidator<ChangePasswordRe
     public ChangePasswordRequestValidator()
     {
         RuleFor(x => x.CurrentPassword).NotEmpty();
-        RuleFor(x => x.NewPassword).NotEmpty().MinimumLength(8).MaximumLength(128)
-            .Matches("[A-Z]").WithMessage("Password must contain an uppercase letter.")
-            .Matches("[a-z]").WithMessage("Password must contain a lowercase letter.")
-            .Matches("[0-9]").WithMessage("Password must contain a digit.");
+        RuleFor(x => x.NewPassword).StrongPassword();
     }
 }
 
@@ -200,6 +201,7 @@ public class AuthService(
 
     private static UserProfileDto ToProfile(User user, Clinic clinic, Guid? dentistId) => new(
         user.Id, user.Email, user.FullName, user.FullNameAr, user.Role.Name,
-        user.Role.Permissions, user.PreferredLanguage, dentistId,
-        new ClinicInfoDto(clinic.Id, clinic.Name, clinic.NameAr, clinic.Currency, clinic.TimeZone, clinic.DefaultLanguage));
+        user.Role.EffectivePermissions, user.PreferredLanguage, dentistId,
+        new ClinicInfoDto(clinic.Id, clinic.Name, clinic.NameAr, clinic.Currency, clinic.TimeZone, clinic.DefaultLanguage,
+            clinic.SubscriptionPlan, clinic.SubscriptionStatus, clinic.TrialEndsAt, clinic.PaidUntil, ClinicAccess.IsReadOnly(clinic.SubscriptionStatus)));
 }

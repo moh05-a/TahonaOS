@@ -82,43 +82,48 @@ public class AppointmentService(
 
     public async Task<AppointmentDto> CreateAsync(AppointmentUpsertRequest request, CancellationToken ct)
     {
-        var patient = await db.Patients.FirstOrDefaultAsync(p => p.Id == request.PatientId, ct)
-                      ?? throw RequestValidationException.For("patientId", "Patient not found.");
-        var dentist = await db.Dentists.FirstOrDefaultAsync(d => d.Id == request.DentistId && d.IsActive, ct)
-                      ?? throw RequestValidationException.For("dentistId", "Dentist not found or inactive.");
-        await EnsurePlanAsync(request.TreatmentPlanId, request.PatientId, ct);
-
         var start = request.StartTime.UtcDateTime;
         var end = start.AddMinutes(request.DurationMinutes);
-        if (!request.AllowOverlap) await EnsureNoOverlapAsync(dentist.Id, patient.Id, start, end, null, ct);
 
-        var appt = new Appointment
+        // Check-then-insert runs under a lock per dentist and per patient, so two simultaneous bookings cannot both pass.
+        var (appt, patientName, dentistUserId) = await db.WithLocksAsync(BookingLocks(request.DentistId, request.PatientId), async () =>
         {
-            PatientId = patient.Id,
-            DentistId = dentist.Id,
-            StartTime = start,
-            EndTime = end,
-            Treatment = request.Treatment.Trim(),
-            Notes = request.Notes?.Trim(),
-            Chair = request.Chair?.Trim(),
-            TreatmentPlanId = request.TreatmentPlanId
-        };
-        db.Appointments.Add(appt);
+            var patient = await db.Patients.FirstOrDefaultAsync(p => p.Id == request.PatientId, ct)
+                          ?? throw RequestValidationException.For("patientId", "Patient not found.");
+            var dentist = await db.Dentists.FirstOrDefaultAsync(d => d.Id == request.DentistId && d.IsActive, ct)
+                          ?? throw RequestValidationException.For("dentistId", "Dentist not found or inactive.");
+            await EnsurePlanAsync(request.TreatmentPlanId, request.PatientId, ct);
+            if (!request.AllowOverlap) await EnsureNoOverlapAsync(dentist.Id, patient.Id, start, end, null, ct);
 
-        // Recovery attribution: a booking for a patient with open follow-ups closes them as "Booked".
-        if (start > clock.UtcNow) await AttributeBookingAsync(appt, request.FollowUpId, ct);
+            var created = new Appointment
+            {
+                PatientId = patient.Id,
+                DentistId = dentist.Id,
+                StartTime = start,
+                EndTime = end,
+                Treatment = request.Treatment.Trim(),
+                Notes = request.Notes?.Trim(),
+                Chair = request.Chair?.Trim(),
+                TreatmentPlanId = request.TreatmentPlanId
+            };
+            db.Appointments.Add(created);
 
-        if (patient.Status == PatientStatus.Inactive) patient.Status = PatientStatus.Active;
-        await db.SaveChangesAsync(ct);
+            // Recovery attribution: a booking for a patient with open follow-ups closes them as "Booked".
+            if (start > clock.UtcNow) await AttributeBookingAsync(created, request.FollowUpId, ct);
 
-        if (dentist.UserId is not null)
+            if (patient.Status == PatientStatus.Inactive) patient.Status = PatientStatus.Active;
+            await db.SaveChangesAsync(ct);
+            return (created, patient.FullName, dentist.UserId);
+        }, ct);
+
+        if (dentistUserId is not null)
         {
             await notifications.NotifyAsync(new NotifyRequest(
                 NotificationType.NewAppointment, PriorityLevel.Low,
-                $"New appointment: {patient.FullName}",
+                $"New appointment: {patientName}",
                 $"{appt.Treatment} · {start:yyyy-MM-dd HH:mm} UTC",
                 $"/appointments?date={start:yyyy-MM-dd}", nameof(Appointment), appt.Id,
-                UserIds: [dentist.UserId.Value], ExcludeUserId: currentUser.UserId), ct);
+                UserIds: [dentistUserId.Value], ExcludeUserId: currentUser.UserId), ct);
         }
 
         return await GetAsync(appt.Id, ct);
@@ -126,52 +131,63 @@ public class AppointmentService(
 
     public async Task<AppointmentDto> UpdateAsync(Guid id, AppointmentUpsertRequest request, CancellationToken ct)
     {
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new NotFoundException("Appointment", id);
-        if (appt.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled)
-            throw new BusinessRuleException("Completed or cancelled appointments cannot be edited.");
-
-        if (!await db.Dentists.AnyAsync(d => d.Id == request.DentistId && d.IsActive, ct))
-            throw RequestValidationException.For("dentistId", "Dentist not found or inactive.");
-        await EnsurePlanAsync(request.TreatmentPlanId, appt.PatientId, ct);
-
+        var patientId = await db.Appointments.Where(a => a.Id == id).Select(a => (Guid?)a.PatientId).FirstOrDefaultAsync(ct)
+                        ?? throw new NotFoundException("Appointment", id);
         var start = request.StartTime.UtcDateTime;
         var end = start.AddMinutes(request.DurationMinutes);
-        if (!request.AllowOverlap) await EnsureNoOverlapAsync(request.DentistId, appt.PatientId, start, end, id, ct);
 
-        appt.DentistId = request.DentistId;
-        appt.StartTime = start;
-        appt.EndTime = end;
-        appt.Treatment = request.Treatment.Trim();
-        appt.Notes = request.Notes?.Trim();
-        appt.Chair = request.Chair?.Trim();
-        appt.TreatmentPlanId = request.TreatmentPlanId;
-        if (appt.Status == AppointmentStatus.NoShow && start > clock.UtcNow) appt.Status = AppointmentStatus.Scheduled;
-        await db.SaveChangesAsync(ct);
+        await db.WithLocksAsync(BookingLocks(request.DentistId, patientId), async () =>
+        {
+            var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new NotFoundException("Appointment", id);
+            if (appt.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled)
+                throw new BusinessRuleException("Completed or cancelled appointments cannot be edited.");
+
+            if (!await db.Dentists.AnyAsync(d => d.Id == request.DentistId && d.IsActive, ct))
+                throw RequestValidationException.For("dentistId", "Dentist not found or inactive.");
+            await EnsurePlanAsync(request.TreatmentPlanId, appt.PatientId, ct);
+            if (!request.AllowOverlap) await EnsureNoOverlapAsync(request.DentistId, appt.PatientId, start, end, id, ct);
+
+            if (appt.StartTime != start) ResetReminder(appt);
+            appt.DentistId = request.DentistId;
+            appt.StartTime = start;
+            appt.EndTime = end;
+            appt.Treatment = request.Treatment.Trim();
+            appt.Notes = request.Notes?.Trim();
+            appt.Chair = request.Chair?.Trim();
+            appt.TreatmentPlanId = request.TreatmentPlanId;
+            if (appt.Status == AppointmentStatus.NoShow && start > clock.UtcNow) appt.Status = AppointmentStatus.Scheduled;
+            return await db.SaveChangesAsync(ct);
+        }, ct);
         return await GetAsync(id, ct);
     }
 
     /// <summary>Drag-and-drop / resize from the calendar.</summary>
     public async Task<AppointmentDto> RescheduleAsync(Guid id, RescheduleRequest request, CancellationToken ct)
     {
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new NotFoundException("Appointment", id);
-        if (appt.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.InTreatment)
-            throw new BusinessRuleException($"A {appt.Status} appointment cannot be moved.");
-
-        var dentistId = request.DentistId ?? appt.DentistId;
-        if (dentistId != appt.DentistId && !await db.Dentists.AnyAsync(d => d.Id == dentistId && d.IsActive, ct))
-            throw RequestValidationException.For("dentistId", "Dentist not found or inactive.");
-
+        var current = await db.Appointments.Where(a => a.Id == id).Select(a => new { a.PatientId, a.DentistId }).FirstOrDefaultAsync(ct)
+                      ?? throw new NotFoundException("Appointment", id);
+        var dentistId = request.DentistId ?? current.DentistId;
         var start = request.StartTime.UtcDateTime;
         var end = request.EndTime.UtcDateTime;
-        if (!request.AllowOverlap) await EnsureNoOverlapAsync(dentistId, appt.PatientId, start, end, id, ct);
 
-        appt.StartTime = start;
-        appt.EndTime = end;
-        appt.DentistId = dentistId;
-        appt.ReminderSentAt = null;
-        if (appt.Status == AppointmentStatus.NoShow && start > clock.UtcNow) appt.Status = AppointmentStatus.Scheduled;
-        if (appt.Status == AppointmentStatus.Confirmed) appt.Status = AppointmentStatus.Scheduled; // needs re-confirmation
-        await db.SaveChangesAsync(ct);
+        await db.WithLocksAsync(BookingLocks(dentistId, current.PatientId), async () =>
+        {
+            var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id, ct) ?? throw new NotFoundException("Appointment", id);
+            if (appt.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.InTreatment)
+                throw new BusinessRuleException($"A {appt.Status} appointment cannot be moved.");
+
+            if (dentistId != appt.DentistId && !await db.Dentists.AnyAsync(d => d.Id == dentistId && d.IsActive, ct))
+                throw RequestValidationException.For("dentistId", "Dentist not found or inactive.");
+            if (!request.AllowOverlap) await EnsureNoOverlapAsync(dentistId, appt.PatientId, start, end, id, ct);
+
+            appt.StartTime = start;
+            appt.EndTime = end;
+            appt.DentistId = dentistId;
+            ResetReminder(appt);
+            if (appt.Status == AppointmentStatus.NoShow && start > clock.UtcNow) appt.Status = AppointmentStatus.Scheduled;
+            if (appt.Status == AppointmentStatus.Confirmed) appt.Status = AppointmentStatus.Scheduled; // needs re-confirmation
+            return await db.SaveChangesAsync(ct);
+        }, ct);
         return await GetAsync(id, ct);
     }
 
@@ -249,6 +265,16 @@ public class AppointmentService(
         appt.FollowUpId = followUpId is not null && open.Any(f => f.Id == followUpId)
             ? followUpId
             : open.Where(f => f.LastContactedAt != null).OrderByDescending(f => f.LastContactedAt).Select(f => (Guid?)f.Id).FirstOrDefault();
+    }
+
+    /// <summary>One lock per dentist diary and one per patient; the tenant filter keeps ids unique to the clinic.</summary>
+    private static string[] BookingLocks(Guid dentistId, Guid patientId) => [$"booking:dentist:{dentistId}", $"booking:patient:{patientId}"];
+
+    /// <summary>A moved appointment needs a fresh reminder.</summary>
+    private static void ResetReminder(Appointment appt)
+    {
+        appt.ReminderSentAt = null;
+        appt.ReminderAttempts = 0;
     }
 
     private async Task EnsurePlanAsync(Guid? planId, Guid patientId, CancellationToken ct)

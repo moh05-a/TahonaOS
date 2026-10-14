@@ -22,7 +22,9 @@ export type FollowUpTrigger =
 export type FollowUpStatus = 'Pending' | 'Contacted' | 'Booked' | 'Recovered' | 'NoResponse' | 'Dismissed' | 'Resolved'
 export type PriorityLevel = 'Low' | 'Medium' | 'High' | 'Urgent'
 export type MessageChannel = 'WhatsApp' | 'Sms' | 'Email' | 'Phone'
-export type MessageStatus = 'Queued' | 'Sent' | 'Delivered' | 'Read' | 'Failed' | 'ManualPending' | 'Logged'
+export type MessageStatus = 'Queued' | 'Sent' | 'Delivered' | 'Read' | 'Failed' | 'ManualPending' | 'Logged' | 'Received'
+export type MessagingConsent = 'Unknown' | 'Granted' | 'OptedOut'
+export type AiPatientDataMode = 'Off' | 'Minimized' | 'Full'
 export type MessageTemplateType = 'AppointmentReminder' | 'TreatmentFollowUp' | 'MissedAppointment' | 'Recall' | 'PaymentReminder' | 'PostTreatment' | 'Custom'
 export type NotificationType =
   | 'NewAppointment' | 'UpcomingAppointment' | 'MissedAppointment' | 'OverduePayment' | 'TreatmentFollowUp' | 'HighValueInactiveTreatment'
@@ -38,7 +40,14 @@ export interface Paged<T> {
 }
 
 // ------------------------------------------------------------------ auth
-export interface ClinicInfo { id: string; name: string; nameAr?: string; currency: string; timeZone: string; defaultLanguage: string }
+export type SubscriptionStatus = 'Trial' | 'Active' | 'PastDue' | 'Cancelled' | 'Suspended'
+export interface ClinicInfo {
+  id: string; name: string; nameAr?: string; currency: string; timeZone: string; defaultLanguage: string
+  subscriptionPlan: string; subscriptionStatus: SubscriptionStatus; trialEndsAt?: string; paidUntil?: string
+  /** Cancelled or suspended: records can be viewed and exported, not changed. */
+  readOnly: boolean
+}
+export interface InvitationInfo { email: string; clinicName?: string; contactName?: string; plan: string; trialDays: number; expiresAt: string }
 export interface UserProfile {
   id: string; email: string; fullName: string; fullNameAr?: string; role: string; permissions: string[]
   preferredLanguage: string; dentistId?: string; clinic: ClinicInfo
@@ -63,8 +72,9 @@ export interface PatientDetail {
   insuranceProvider?: string; insurancePolicyNumber?: string; insuranceCoveragePercent?: number
   preferredLanguage: string; status: PatientStatus; registeredAt: string; referralSource?: string
   primaryDentistId?: string; primaryDentistName?: string; lastVisitAt?: string; stats: PatientStats
+  messagingConsent: MessagingConsent; messagingConsentAt?: string; messagingConsentSource?: string
 }
-export type PatientUpsert = Omit<PatientDetail, 'id' | 'fileNumber' | 'age' | 'registeredAt' | 'primaryDentistName' | 'lastVisitAt' | 'stats'>
+export type PatientUpsert = Omit<PatientDetail, 'id' | 'fileNumber' | 'age' | 'registeredAt' | 'primaryDentistName' | 'lastVisitAt' | 'stats' | 'messagingConsentAt' | 'messagingConsentSource'>
 export interface TimelineEvent { kind: string; title: string; description?: string; date: string; amount?: number; status?: string; entityId?: string }
 export interface PatientNote { id: string; content: string; isPinned: boolean; authorName?: string; createdAt: string }
 
@@ -145,6 +155,9 @@ export interface InvoiceDetail {
 export interface PaymentListItem {
   id: string; receiptNumber: string; patientId: string; patientName: string; invoiceId?: string; invoiceNumber?: string
   type: PaymentType; amount: number; method: PaymentMethod; paidAt: string; reference?: string; receivedBy?: string; isRecovered: boolean
+  notes?: string; refundedAmount: number
+  /** An entry made by mistake and cancelled. It counts towards no total and is listed only on request. */
+  isCancelled: boolean; cancelledAt?: string; cancelledBy?: string; cancelReason?: string
 }
 export interface PaymentSummary {
   today: number; thisMonth: number; refundsThisMonth: number; recoveredThisMonth: number
@@ -205,7 +218,7 @@ export interface MessageTemplate {
 export interface Message {
   id: string; patientId: string; patientName: string; channel: MessageChannel; direction: 'Outbound' | 'Inbound'; body: string
   toNumber?: string; status: MessageStatus; error?: string; createdAt: string; sentAt?: string; sentBy?: string
-  templateName?: string; isRecovery: boolean
+  templateName?: string; isRecovery: boolean; isAutomated: boolean; deliveredAt?: string; readAt?: string
 }
 export interface Conversation {
   patientId: string; patientName: string; patientNameAr?: string; phone: string; lastMessage: string; lastMessageAt: string
@@ -249,7 +262,9 @@ export interface SearchResult { query: string; patients: SearchHit[]; appointmen
 
 export interface DataTable { title: string; columns: string[]; rows: string[][]; rowPatientIds?: (string | null)[] }
 export interface AssistantAnswer { answer: string; source: string; toolsUsed: string[]; data: DataTable[]; refused: boolean }
-export interface AssistantStatus { llmConfigured: boolean; mode: string; provider?: string; model?: string; suggestedQuestions: string[] }
+export interface AssistantStatus {
+  llmConfigured: boolean; mode: string; provider?: string; model?: string; suggestedQuestions: string[]; patientData: AiPatientDataMode
+}
 
 export interface RecoverySettings {
   missedAppointmentLookbackDays: number; maxLookbackDays: number; recontactAfterDays: number; recallEstimatedValue: number
@@ -261,6 +276,9 @@ export interface ClinicSettings {
   workingHoursStart: string; workingHoursEnd: string; workingDays: number[]; slotMinutes: number; appointmentReminderHours: number
   invoicePrefix: string; invoiceDueDays: number; taxRatePercent: number; whatsAppEnabled: boolean; autoSendFollowUps: boolean
   aiAssistantEnabled: boolean; recovery: RecoverySettings
+  quietHoursStart: string; quietHoursEnd: string; requireConsentForAutomation: boolean
+  /** Dates the clinic is closed, as yyyy-MM-dd. */
+  holidays?: string[]
 }
 export interface ClinicProfile {
   id: string; name: string; nameAr?: string; phone?: string; email?: string; address?: string; city?: string; country: string
@@ -274,4 +292,82 @@ export interface AuditLog {
 export interface DocumentDto {
   id: string; patientId: string; category: DocumentCategory; fileName: string; contentType: string; sizeBytes: number
   description?: string; toothNumber?: number; uploadedBy?: string; createdAt: string
+}
+
+// ------------------------------------------------------------------ onboarding
+export interface OnboardingStep { key: string; kind: 'auto' | 'manual'; done: boolean; canConfirm: boolean; link: string; detail?: string }
+export interface OnboardingFigures {
+  patients: number; importedPatients: number; upcomingAppointments: number; outstandingBalance: number; importedOpeningBalance: number
+  dentists: number; staffUsers: number; currency: string
+}
+export interface OnboardingStatus {
+  steps: OnboardingStep[]; doneCount: number; totalCount: number; completed: boolean; completedAt?: string; figures: OnboardingFigures
+}
+
+// ------------------------------------------------------------------ import
+export type ImportKind = 'Patients' | 'Appointments' | 'OpeningBalances' | 'TreatmentPlans'
+export type ImportBatchStatus = 'Uploaded' | 'Committed' | 'Undone'
+export type RowVerdict = 'Ready' | 'Duplicate' | 'PossibleDuplicate' | 'AlreadyImported' | 'Error'
+export type RowAction = 'create' | 'skip' | 'fillBlanks'
+export interface ImportField { key: string; label: string; labelAr: string; required: boolean; example: string; synonyms: string[]; help?: string }
+export interface ImportDefinition { kind: ImportKind; fields: ImportField[]; requiredAnyOf: string[][] }
+export interface ImportOptions {
+  dateFormat: 'dmy' | 'mdy' | 'ymd'; allowMissingPhone: boolean; keepFileNumbers: boolean; duplicateAction: 'skip' | 'fillBlanks'
+  possibleDuplicateAction: 'create' | 'skip'; assumePastAppointmentsCompleted: boolean; defaultDentistId?: string | null; defaultDurationMinutes: number
+}
+export type ImportMapping = Record<string, string | null>
+export interface ImportRow {
+  rowNumber: number; verdict: RowVerdict; action: RowAction; allowedActions: RowAction[]; errors: string[]; warnings: string[]
+  display: string; matchId?: string; matchLabel?: string; amount?: number
+}
+export interface ImportSummary {
+  totalRows: number; ready: number; duplicates: number; possibleDuplicates: number; alreadyImported: number; errors: number
+  willCreate: number; willUpdate: number; willSkip: number; rowsWithWarnings: number; totalAmount?: number
+}
+export interface ImportPreview { summary: ImportSummary; rows: ImportRow[]; rowsTruncated: boolean; mappingProblems: string[] }
+export interface ImportBatch {
+  id: string; kind: ImportKind; fileName: string; sourceSystem: string; status: ImportBatchStatus; totalRows: number
+  createdCount: number; updatedCount: number; skippedCount: number; errorCount: number; totalAmount?: number; createdAt: string
+  createdBy?: string; committedAt?: string; undoneAt?: string; lastError?: string
+}
+export interface ImportUpload {
+  batch: ImportBatch; headers: string[]; sampleRows: string[][]; suggestedMapping: ImportMapping; savedMapping?: ImportMapping
+  savedOptions?: ImportOptions; previousImportAt?: string
+}
+export interface ImportCommit { batch: ImportBatch; summary: ImportSummary }
+export interface ImportUndo { batch: ImportBatch; removed: number; kept: number; notes: string[] }
+
+// ------------------------------------------------------------------ front desk
+export interface FrontDeskAppointment { appointment: Appointment; patientBalance?: number | null; isLate: boolean; messagingConsent: MessagingConsent }
+export interface FrontDesk {
+  date: string; appointments: FrontDeskAppointment[]
+  counts: { expected: number; arrived: number; inTreatment: number; completed: number; noShow: number; cancelled: number }
+  tomorrowUnconfirmed: number; followUpsDue: number; collectedToday?: number | null; closed?: 'holiday' | 'day-off' | null
+}
+
+// ------------------------------------------------------------------ recovery evidence
+export interface FollowUpContact {
+  messageId: string; at: string; channel: MessageChannel; direction: 'Outbound' | 'Inbound'; status: MessageStatus; by?: string; isAutomated: boolean; body: string
+}
+export interface FollowUpTrail {
+  id: string; issueType: RecoveryIssueType; title: string; sourceLabel?: string; sourceLink?: string; eventAt?: string; identifiedAt: string; dueDate: string
+  status: FollowUpStatus; estimatedValue: number; contactAttempts: number; lastContactedAt?: string; outcome?: string; resolvedAt?: string; assignedTo?: string
+  bookedAppointmentAt?: string; collectedAfterFollowUp: number; contacts: FollowUpContact[]
+}
+
+// ------------------------------------------------------------------ owner report
+export interface ImpactPeriod {
+  from: string; to: string; appointmentsDue: number; appointmentsCompleted: number; noShows: number; noShowRate: number; remindersSent: number
+  followUpsIdentified: number; followUpsContacted: number; bookedAfterContact: number; paidAfterContact: number; collected: number
+  collectedAfterFollowUp: number; plansPresented: number; plansAccepted: number; patientsSeen: number; returningPatients: number
+}
+export interface ImpactReport { current: ImpactPeriod; previous: ImpactPeriod; caveats: string[] }
+
+// ------------------------------------------------------------------ account
+export interface Account {
+  clinicName: string; plan: string; status: SubscriptionStatus; trialEndsAt?: string; paidUntil?: string; statusReason?: string; readOnly: boolean
+  createdAt: string; patients: number; activeStaff: number; dentists: number; paymentInstructions?: string; supportContact?: string
+}
+export interface WhatsAppConnection {
+  mode: 'clinic' | 'shared' | 'manual'; canConnect: boolean; phoneNumberId?: string; displayPhoneNumber?: string; verifiedName?: string; connectedAt?: string
 }

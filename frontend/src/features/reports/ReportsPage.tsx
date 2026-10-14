@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { ImpactCard } from './ImpactCard'
 import { Download } from 'lucide-react'
 import { api } from '@/lib/api'
 import { isoDateInClinic, clinicLocalToUtc, money, number, percent } from '@/lib/format'
@@ -56,6 +57,8 @@ export default function ReportsPage() {
           </>
         }
       />
+
+      <ImpactCard />
 
       <Section title={t('reports.treatment')} loading={!a} items={a && [
         { label: t('reports.plansCreated'), value: number(a.treatment.plansCreated) },

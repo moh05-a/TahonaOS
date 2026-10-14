@@ -13,6 +13,8 @@ public class TreatmentPlanConfiguration : IEntityTypeConfiguration<TreatmentPlan
         b.Property(x => x.Title).HasMaxLength(200).IsRequired();
         b.Property(x => x.Notes).HasMaxLength(2000);
         b.Property(x => x.RejectionReason).HasMaxLength(500);
+        b.Property(x => x.ExternalId).HasMaxLength(100);
+        b.HasIndex(x => x.ImportBatchId);
         b.HasIndex(x => new { x.ClinicId, x.Status });
         b.HasIndex(x => x.PatientId);
         b.HasOne(x => x.Patient).WithMany(p => p.TreatmentPlans).HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
@@ -72,6 +74,7 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.HasIndex(x => new { x.ClinicId, x.Status });
         b.HasIndex(x => new { x.ClinicId, x.DueDate });
         b.HasIndex(x => x.PatientId);
+        b.HasIndex(x => x.ImportBatchId);
         b.HasOne(x => x.Patient).WithMany(p => p.Invoices).HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.TreatmentPlan).WithMany().HasForeignKey(x => x.TreatmentPlanId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne(x => x.Dentist).WithMany().HasForeignKey(x => x.DentistId).OnDelete(DeleteBehavior.SetNull);
@@ -102,6 +105,8 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         b.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.Invoice).WithMany(i => i.Payments).HasForeignKey(x => x.InvoiceId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.ReceivedBy).WithMany().HasForeignKey(x => x.ReceivedById).OnDelete(DeleteBehavior.SetNull);
+        b.Property(x => x.CancelReason).HasMaxLength(500);
+        b.HasOne(x => x.CancelledBy).WithMany().HasForeignKey(x => x.CancelledById).OnDelete(DeleteBehavior.SetNull);
         b.HasOne(x => x.RecoveredFollowUp).WithMany().HasForeignKey(x => x.RecoveredFollowUpId).OnDelete(DeleteBehavior.SetNull);
     }
 }

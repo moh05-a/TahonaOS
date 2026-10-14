@@ -13,7 +13,8 @@ public record ClinicProfileRequest(string Name, string? NameAr, string? Phone, s
 
 public record ClinicSettingsDto(TimeOnly WorkingHoursStart, TimeOnly WorkingHoursEnd, IReadOnlyList<int> WorkingDays, int SlotMinutes,
     int AppointmentReminderHours, string InvoicePrefix, int InvoiceDueDays, decimal TaxRatePercent, bool WhatsAppEnabled,
-    bool AutoSendFollowUps, bool AiAssistantEnabled, RecoverySettings Recovery);
+    bool AutoSendFollowUps, bool AiAssistantEnabled, RecoverySettings Recovery,
+    TimeOnly QuietHoursStart, TimeOnly QuietHoursEnd, bool RequireConsentForAutomation, IReadOnlyList<DateOnly>? Holidays = null);
 
 public record IntegrationStatusDto(string WhatsAppProvider, bool WhatsAppConfigured, bool AiConfigured, string AiProvider, string? AiModel, string StorageProvider);
 
@@ -47,6 +48,7 @@ public class ClinicSettingsValidator : AbstractValidator<ClinicSettingsDto>
         RuleFor(x => x.InvoicePrefix).NotEmpty().MaximumLength(10).Matches("^[A-Z0-9-]+$");
         RuleFor(x => x.InvoiceDueDays).InclusiveBetween(0, 365);
         RuleFor(x => x.TaxRatePercent).InclusiveBetween(0, 50);
+        RuleFor(x => x.Holidays).Must(h => h is null || h.Count <= 200).WithMessage("At most 200 closed dates can be listed.");
         RuleFor(x => x.Recovery).NotNull();
         RuleFor(x => x.Recovery.HighValueThreshold).GreaterThan(0);
         RuleFor(x => x.Recovery.AttributionWindowDays).InclusiveBetween(1, 365);
@@ -65,7 +67,7 @@ public class ClinicSettingsValidator : AbstractValidator<ClinicSettingsDto>
     }
 }
 
-public class SettingsService(IAppDbContext db, IWhatsAppProvider whatsApp, IAiProvider ai)
+public class SettingsService(IAppDbContext db, IWhatsAppProvider whatsApp, IAiProvider ai, IFileStorage storage)
 {
     public async Task<ClinicProfileDto> GetProfileAsync(CancellationToken ct)
     {
@@ -95,7 +97,7 @@ public class SettingsService(IAppDbContext db, IWhatsAppProvider whatsApp, IAiPr
         return new ClinicSettingsDto(s.WorkingHoursStart, s.WorkingHoursEnd,
             s.WorkingDays.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToList(),
             s.SlotMinutes, s.AppointmentReminderHours, s.InvoicePrefix, s.InvoiceDueDays, s.TaxRatePercent, s.WhatsAppEnabled,
-            s.AutoSendFollowUps, s.AiAssistantEnabled, s.Recovery);
+            s.AutoSendFollowUps, s.AiAssistantEnabled, s.Recovery, s.QuietHoursStart, s.QuietHoursEnd, s.RequireConsentForAutomation, s.Holidays.Order().ToList());
     }
 
     public async Task UpdateSettingsAsync(ClinicSettingsDto r, CancellationToken ct)
@@ -113,9 +115,13 @@ public class SettingsService(IAppDbContext db, IWhatsAppProvider whatsApp, IAiPr
         s.AutoSendFollowUps = r.AutoSendFollowUps;
         s.AiAssistantEnabled = r.AiAssistantEnabled;
         s.Recovery = r.Recovery;
+        s.QuietHoursStart = r.QuietHoursStart;
+        s.QuietHoursEnd = r.QuietHoursEnd;
+        s.RequireConsentForAutomation = r.RequireConsentForAutomation;
+        if (r.Holidays is not null) s.Holidays = r.Holidays.Distinct().Order().ToList();
         await db.SaveChangesAsync(ct);
     }
 
     public IntegrationStatusDto Integrations() =>
-        new(whatsApp.Name, whatsApp.IsConfigured, ai.IsConfigured, ai.ProviderName, ai.IsConfigured ? ai.ModelName : null, "Local disk");
+        new(whatsApp.Name, whatsApp.IsConfigured, ai.IsConfigured, ai.ProviderName, ai.IsConfigured ? ai.ModelName : null, storage.Name);
 }

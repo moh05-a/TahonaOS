@@ -15,7 +15,7 @@ public class AppDbContext(
     IClock clock) : DbContext(options), IAppDbContext
 {
     private static readonly HashSet<string> AuditIgnoredProperties =
-        [nameof(BaseEntity.CreatedAt), nameof(BaseEntity.UpdatedAt), nameof(User.PasswordHash), nameof(User.FailedLoginCount),
+        [nameof(BaseEntity.CreatedAt), nameof(BaseEntity.UpdatedAt), nameof(User.PasswordHash), nameof(ClinicWhatsApp.EncryptedAccessToken), nameof(User.FailedLoginCount),
          nameof(User.LastLoginAt), nameof(User.LockedUntil), nameof(Domain.Entities.ClinicSettings.NextInvoiceNumber),
          nameof(Domain.Entities.ClinicSettings.NextPatientNumber), nameof(Domain.Entities.ClinicSettings.NextPlanNumber), nameof(Domain.Entities.ClinicSettings.NextReceiptNumber)];
 
@@ -50,8 +50,13 @@ public class AppDbContext(
     public DbSet<MessageTemplate> MessageTemplates => Set<MessageTemplate>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<ClinicWhatsApp> ClinicWhatsApps => Set<ClinicWhatsApp>();
     public DbSet<PatientDocument> Documents => Set<PatientDocument>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<ImportRow> ImportRows => Set<ImportRow>();
+    public DbSet<ClinicInvitation> ClinicInvitations => Set<ClinicInvitation>();
+    public DbSet<UserToken> UserTokens => Set<UserToken>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
@@ -93,6 +98,37 @@ public class AppDbContext(
 
         Expression<Func<T, bool>> filter = e => e.ClinicId == CurrentClinicId;
         return filter;
+    }
+
+    public async Task<T> WithLocksAsync<T>(IReadOnlyCollection<string> lockKeys, Func<Task<T>> action, CancellationToken ct)
+    {
+        // Advisory locks are a PostgreSQL feature; other providers (tests) are single-threaded per context.
+        if (!Database.IsNpgsql()) return await action();
+
+        // Sorted, so two requests needing the same keys always take them in the same order (no deadlock).
+        var keys = lockKeys.Distinct().Order(StringComparer.Ordinal).ToList();
+        if (Database.CurrentTransaction is not null)
+        {
+            await AcquireAsync(keys, ct);
+            return await action();
+        }
+
+        return await Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            ChangeTracker.Clear(); // a retried attempt starts from a clean slate
+            await using var tx = await Database.BeginTransactionAsync(ct);
+            await AcquireAsync(keys, ct);
+            var result = await action();
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
+
+    /// <summary>Transaction-scoped advisory locks: released automatically on commit or rollback.</summary>
+    private async Task AcquireAsync(IEnumerable<string> keys, CancellationToken ct)
+    {
+        foreach (var key in keys)
+            await Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtextextended({0}, 0))", [key], ct);
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

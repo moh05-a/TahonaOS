@@ -26,9 +26,16 @@ public class RecoverySyncService(
     MessagingService messaging,
     NotificationService notifications,
     IWhatsAppProvider whatsApp,
+    IClinicTime clinicTime,
     IClock clock,
     ILogger<RecoverySyncService> logger)
 {
+    /// <summary>An appointment reminder is attempted at most this many times, then left to staff.</summary>
+    public const int MaxReminderAttempts = 3;
+
+    /// <summary>A follow-up created longer ago than this is no longer messaged automatically; staff handle it.</summary>
+    private static readonly TimeSpan AutoFollowUpWindow = TimeSpan.FromDays(3);
+
     private static readonly FollowUpStatus[] OpenStatuses = [FollowUpStatus.Pending, FollowUpStatus.Contacted, FollowUpStatus.NoResponse];
 
     public async Task<SyncResult> SyncAsync(CancellationToken ct)
@@ -129,65 +136,113 @@ public class RecoverySyncService(
             notified++;
         }
 
-        // ---------------------------------------------------------------- automatic outreach (only with a real provider)
+        // ---------------------------------------------------------------- automatic outreach
+        // Deterministic rules only: a real provider, the clinic's own settings, the patient's consent, and never in quiet hours.
         var autoMessages = 0;
-        if (whatsApp.IsConfigured && clinicSettings.AutoSendFollowUps)
+        var reminders = 0;
+        var localNow = TimeOnly.FromDateTime(clinicTime.ToLocal(now));
+        if (whatsApp.IsConfigured && clinicSettings.WhatsAppEnabled
+            && !MessagingService.InQuietHours(localNow, clinicSettings.QuietHoursStart, clinicSettings.QuietHoursEnd))
         {
-            var autoRules = detection.Rules.Where(r => r.AutoSend).Select(r => r.Id).ToHashSet();
-            foreach (var (f, o) in created.Where(c => c.Opportunity.RuleId is not null && autoRules.Contains(c.Opportunity.RuleId.Value)))
-            {
-                try
-                {
-                    var rule = detection.Rules.First(r => r.Id == o.RuleId);
-                    var result = await messaging.SendAsync(new SendMessageRequest(f.PatientId, MessageChannel.WhatsApp, rule.MessageTemplateId,
-                        rule.MessageTemplateId is null ? RecoveryService.TemplateFor(o.IssueType) : null, null, null, f.Id,
-                        o.IssueType == RecoveryIssueType.OutstandingBalance ? o.Value : null, o.TreatmentName, o.DentistId), ct);
-                    if (result.Status is MessageStatus.Sent)
-                    {
-                        f.Status = FollowUpStatus.Contacted;
-                        f.ContactAttempts++;
-                        f.LastContactedAt = clock.UtcNow;
-                        autoMessages++;
-                    }
-                }
-                catch (AppException ex)
-                {
-                    logger.LogWarning(ex, "Auto follow-up message failed for follow-up {FollowUpId}", f.Id);
-                }
-            }
-            await db.SaveChangesAsync(ct);
+            if (clinicSettings.AutoSendFollowUps) autoMessages = await SendAutoFollowUpsAsync(detection, clinicSettings, ct);
+            reminders = await SendRemindersAsync(clinicSettings, ct);
         }
 
-        var reminders = await SendRemindersAsync(clinicSettings, ct);
         notified += await NotifyUpcomingAsync(ct);
 
         return new SyncResult(created.Count, resolved, booked, autoMessages, reminders, notified);
     }
 
+    /// <summary>
+    /// Sends the rule's template once for each new, untouched follow-up whose rule has AutoSend. The attempt is
+    /// recorded before sending, so a crash or a failed send can never lead to a second automatic message.
+    /// </summary>
+    private async Task<int> SendAutoFollowUpsAsync(RecoveryDetector.DetectionResult detection, ClinicSettings settings, CancellationToken ct)
+    {
+        var autoRules = detection.Rules.Where(r => r.AutoSend).ToDictionary(r => r.Id);
+        if (autoRules.Count == 0) return 0;
+
+        var since = clock.UtcNow - AutoFollowUpWindow;
+        var ruleIds = autoRules.Keys.ToList();
+        var candidates = await db.FollowUps
+            .Where(f => f.Status == FollowUpStatus.Pending && f.AutoSendAttempts == 0 && f.ContactAttempts == 0
+                        && f.RuleId != null && ruleIds.Contains(f.RuleId.Value) && f.CreatedAt >= since)
+            .ToListAsync(ct);
+        if (candidates.Count == 0) return 0;
+
+        var consent = await ConsentAsync(candidates.Select(f => f.PatientId), ct);
+        var sent = 0;
+        foreach (var f in candidates)
+        {
+            if (!MessagingService.AllowsAutomation(consent.GetValueOrDefault(f.PatientId), settings.RequireConsentForAutomation)) continue;
+            // Only while the issue still exists: a patient who booked or paid in the meantime is left alone.
+            var o = detection.Opportunities.FirstOrDefault(x => x.IssueType == f.IssueType && x.SourceEntityId == f.SourceEntityId);
+            if (o is null) continue;
+
+            f.AutoSendAttempts++;
+            await db.SaveChangesAsync(ct);
+            try
+            {
+                var rule = autoRules[f.RuleId!.Value];
+                var result = await messaging.SendAutomatedAsync(new SendMessageRequest(f.PatientId, MessageChannel.WhatsApp, rule.MessageTemplateId,
+                    rule.MessageTemplateId is null ? RecoveryService.TemplateFor(o.IssueType) : null, null, null, f.Id,
+                    o.IssueType == RecoveryIssueType.OutstandingBalance ? o.Value : null, o.TreatmentName, o.DentistId), ct);
+                if (result.Status != MessageStatus.Sent) continue;
+
+                f.Status = FollowUpStatus.Contacted;
+                f.ContactAttempts++;
+                f.LastContactedAt = clock.UtcNow;
+                await db.SaveChangesAsync(ct);
+                sent++;
+            }
+            catch (AppException ex)
+            {
+                logger.LogWarning(ex, "Auto follow-up message not sent for follow-up {FollowUpId}", f.Id);
+            }
+        }
+        return sent;
+    }
+
+    /// <summary>
+    /// Reminds patients of upcoming appointments. Each attempt is counted before sending and capped at
+    /// <see cref="MaxReminderAttempts"/>, so a failing number is not retried forever.
+    /// </summary>
     private async Task<int> SendRemindersAsync(ClinicSettings settings, CancellationToken ct)
     {
-        if (!whatsApp.IsConfigured) return 0;
         var now = clock.UtcNow;
         var horizon = now.AddHours(settings.AppointmentReminderHours);
-        var due = await db.Appointments.AsNoTracking()
-            .Where(a => a.Status == AppointmentStatus.Scheduled && a.ReminderSentAt == null && a.StartTime > now && a.StartTime <= horizon)
-            .Select(a => new { a.Id, a.PatientId }).Take(100).ToListAsync(ct);
+        var due = await db.Appointments
+            .Where(a => a.Status == AppointmentStatus.Scheduled && a.ReminderSentAt == null && a.ReminderAttempts < MaxReminderAttempts
+                        && a.StartTime > now && a.StartTime <= horizon)
+            .OrderBy(a => a.StartTime).Take(100).ToListAsync(ct);
+        if (due.Count == 0) return 0;
 
+        var consent = await ConsentAsync(due.Select(a => a.PatientId), ct);
         var sent = 0;
         foreach (var a in due)
         {
+            if (!MessagingService.AllowsAutomation(consent.GetValueOrDefault(a.PatientId), settings.RequireConsentForAutomation)) continue;
+
+            a.ReminderAttempts++;
+            await db.SaveChangesAsync(ct);
             try
             {
-                var r = await messaging.SendAsync(new SendMessageRequest(a.PatientId, MessageChannel.WhatsApp, null,
+                var r = await messaging.SendAutomatedAsync(new SendMessageRequest(a.PatientId, MessageChannel.WhatsApp, null,
                     MessageTemplateType.AppointmentReminder, null, a.Id, null, null, null, null), ct);
                 if (r.Status == MessageStatus.Sent) sent++;
             }
             catch (AppException ex)
             {
-                logger.LogWarning(ex, "Reminder failed for appointment {AppointmentId}", a.Id);
+                logger.LogWarning(ex, "Reminder not sent for appointment {AppointmentId}", a.Id);
             }
         }
         return sent;
+    }
+
+    private async Task<Dictionary<Guid, MessagingConsent>> ConsentAsync(IEnumerable<Guid> patientIds, CancellationToken ct)
+    {
+        var ids = patientIds.Distinct().ToList();
+        return await db.Patients.AsNoTracking().Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.MessagingConsent, ct);
     }
 
     /// <summary>Gives dentists a heads-up for appointments starting within the next hour.</summary>

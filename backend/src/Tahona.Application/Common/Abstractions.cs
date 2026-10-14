@@ -34,10 +34,22 @@ public interface IAppDbContext
     DbSet<MessageTemplate> MessageTemplates { get; }
     DbSet<Message> Messages { get; }
     DbSet<Notification> Notifications { get; }
+    DbSet<ClinicWhatsApp> ClinicWhatsApps { get; }
     DbSet<PatientDocument> Documents { get; }
     DbSet<AuditLog> AuditLogs { get; }
+    DbSet<ImportBatch> ImportBatches { get; }
+    DbSet<ImportRow> ImportRows { get; }
+    DbSet<ClinicInvitation> ClinicInvitations { get; }
+    DbSet<UserToken> UserTokens { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs <paramref name="action"/> in one transaction while holding the named locks, so a check followed by a write
+    /// cannot interleave with another request using the same keys (e.g. two bookings for one dentist).
+    /// The action must load everything it needs itself: it may run again if the database connection drops.
+    /// </summary>
+    Task<T> WithLocksAsync<T>(IReadOnlyCollection<string> lockKeys, Func<Task<T>> action, CancellationToken ct);
 }
 
 /// <summary>The authenticated caller.</summary>

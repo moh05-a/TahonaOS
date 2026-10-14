@@ -13,7 +13,9 @@ public record AssistantRequest(string Question, IReadOnlyList<AssistantMessageDt
 
 public record AssistantAnswerDto(string Answer, string Source, IReadOnlyList<string> ToolsUsed, IReadOnlyList<DataTableDto> Data, bool Refused);
 
-public record AssistantStatusDto(bool LlmConfigured, string Mode, string? Provider, string? Model, IReadOnlyList<string> SuggestedQuestions);
+/// <param name="PatientData">What the AI provider may receive: Off, Minimized (file numbers only) or Full.</param>
+public record AssistantStatusDto(bool LlmConfigured, string Mode, string? Provider, string? Model, IReadOnlyList<string> SuggestedQuestions,
+    AiPatientDataMode PatientData);
 
 public class AssistantRequestValidator : AbstractValidator<AssistantRequest>
 {
@@ -34,7 +36,7 @@ public class AssistantRequestValidator : AbstractValidator<AssistantRequest>
 /// without one, a deterministic intent router answers the common questions from the same tools.
 /// Either way every figure shown is pulled from the clinic database — the data tables are returned alongside.
 /// </summary>
-public partial class AssistantService(IAppDbContext db, IAiProvider ai, AssistantTools tools, IClinicTime clinicTime)
+public partial class AssistantService(IAppDbContext db, IAiProvider ai, AssistantTools tools, IClinicTime clinicTime, IAiDataPolicy policy)
 {
     public static readonly IReadOnlyList<string> SuggestedQuestions =
     [
@@ -48,7 +50,7 @@ public partial class AssistantService(IAppDbContext db, IAiProvider ai, Assistan
     ];
 
     public AssistantStatusDto Status() => new(ai.IsConfigured, ai.IsConfigured ? "llm" : "built-in",
-        ai.IsConfigured ? ai.ProviderName : null, ai.IsConfigured ? ai.ModelName : null, SuggestedQuestions);
+        ai.IsConfigured ? ai.ProviderName : null, ai.IsConfigured ? ai.ModelName : null, SuggestedQuestions, policy.PatientData);
 
     public async Task<AssistantAnswerDto> AskAsync(AssistantRequest request, CancellationToken ct)
     {
@@ -66,7 +68,9 @@ public partial class AssistantService(IAppDbContext db, IAiProvider ai, Assistan
         var today = clinicTime.Today;
         var tables = new List<DataTableDto>();
 
-        var aiTools = AssistantTools.Definitions.Select(d => new AiTool(d.Name, d.Description, JsonDocument.Parse(d.SchemaJson).RootElement,
+        var aiTools = AssistantTools.Definitions
+            .Where(d => policy.PatientData != AiPatientDataMode.Off || AssistantTools.AggregateTools.Contains(d.Name))
+            .Select(d => new AiTool(d.Name, d.Description, JsonDocument.Parse(d.SchemaJson).RootElement,
             async (input, token) =>
             {
                 var output = await tools.ExecuteAsync(d.Name, input, token);
@@ -90,6 +94,7 @@ public partial class AssistantService(IAppDbContext db, IAiProvider ai, Assistan
             - The full data tables are shown to the user next to your answer, so do not reproduce large tables.
             - You do not give clinical diagnoses or treatment advice; for clinical questions refer to the treating dentist.
             - Reply in the language of the question (English or Arabic).
+            {PrivacyRule()}
             """;
 
         var conversation = (request.History ?? [])
@@ -105,6 +110,16 @@ public partial class AssistantService(IAppDbContext db, IAiProvider ai, Assistan
             string.IsNullOrWhiteSpace(result.Text) ? "I couldn't find an answer in the clinic data." : result.Text,
             "llm", result.ToolCalls.Select(t => t.Name).Distinct().ToList(), Dedupe(tables), result.Refused);
     }
+
+    /// <summary>Tells the model how patients are identified under the current data policy.</summary>
+    private string PrivacyRule() => policy.PatientData switch
+    {
+        AiPatientDataMode.Off =>
+            "- You only have clinic-wide totals. You cannot look up or list individual patients; say so if asked, and point the user to the Revenue Recovery page.",
+        AiPatientDataMode.Minimized =>
+            "- Patients are identified by file number only (for example P-00042). You do not have their names or phone numbers: refer to patients by file number and never guess a name. The user sees the names in the data tables.",
+        _ => ""
+    };
 
     private static List<DataTableDto> Dedupe(List<DataTableDto> tables) =>
         tables.GroupBy(t => t.Title).Select(g => g.Last()).ToList();
@@ -141,7 +156,7 @@ public partial class AssistantService(IAppDbContext db, IAiProvider ai, Assistan
             tool = "get_revenue_summary";
             output = await tools.RevenueAsync(new DateOnly(today.Year, today.Month, 1), today, ct);
             var recovered = AssistantTools.ToElement(output.ModelPayload).GetProperty("recovered").GetDecimal();
-            answer = $"This month the clinic has recovered **{AssistantTools.Money(recovered, currency)}** from patients contacted through Revenue Recovery.";
+            answer = $"This month the clinic collected **{AssistantTools.Money(recovered, currency)}** from patients after following up with them about the same matter.";
         }
         else if (Has("owe", "owes", "balance", "debt", "unpaid", "ديون", "مديون", "رصيد", "مستحق"))
         {
@@ -216,7 +231,7 @@ public partial class AssistantService(IAppDbContext db, IAiProvider ai, Assistan
             return new AssistantAnswerDto(
                 "I can answer questions about recovery opportunities, outstanding balances, missed appointments, inactive patients, " +
                 "treatment plans and revenue. Try one of the suggested questions.\n\n" +
-                "_Built-in mode: connect an Anthropic API key (AI__APIKEY) for free-form questions._",
+                "_Built-in mode: add an AI provider key (AI__APIKEY) for free-form questions._",
                 "built-in", [], [], false);
         }
 

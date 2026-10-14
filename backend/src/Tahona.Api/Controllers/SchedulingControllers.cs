@@ -29,6 +29,15 @@ public class AppointmentsController(AppointmentService appointments) : Controlle
     public Task<AppointmentDto> Status(Guid id, AppointmentStatusRequest request, CancellationToken ct) => appointments.ChangeStatusAsync(id, request, ct);
 }
 
+/// <summary>Reception's view of today: the list in time order, who is late, balances, and what is waiting.</summary>
+[ApiController]
+[Route("api/front-desk")]
+public class FrontDeskController(FrontDeskService frontDesk) : ControllerBase
+{
+    [HttpGet, HasPermission(Permissions.AppointmentsView)]
+    public Task<FrontDeskDto> Get([FromQuery] Guid? dentistId, CancellationToken ct) => frontDesk.GetAsync(dentistId, ct);
+}
+
 [ApiController]
 [Route("api/dentists")]
 public class DentistsController(DentistService dentists) : ControllerBase

@@ -1,6 +1,7 @@
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Tahona.Application.Features.Provisioning;
 using Tahona.Domain.Authorization;
 using Tahona.Domain.Common;
 using Tahona.Domain.Entities;
@@ -54,25 +55,22 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
             Email = "hello@smileline.jo",
             Address = "Abdoun, Cairo Street, Building 14",
             City = "Amman",
-            CreatedAt = _now.AddMonths(-20)
+            CreatedAt = _now.AddMonths(-20),
+            IsDemo = true,
+            SubscriptionStatus = SubscriptionStatus.Active,
+            SubscriptionPlan = SubscriptionPlans.Standard
         };
         _clinicId = clinic.Id;
         db.Clinics.Add(clinic);
 
-        _settings = new ClinicSettings { ClinicId = _clinicId, NextPatientNumber = 1, NextPlanNumber = 1, NextInvoiceNumber = 1001, NextReceiptNumber = 5001 };
+        _settings = new ClinicSettings
+        {
+            ClinicId = _clinicId, NextPatientNumber = 1, NextPlanNumber = 1, NextInvoiceNumber = 1001, NextReceiptNumber = 5001,
+            Onboarding = new OnboardingState { CompletedAt = _now.AddMonths(-19) } // an established clinic, long past setup
+        };
         db.ClinicSettings.Add(_settings);
 
-        var roles = SystemRoles.DefaultPermissions.ToDictionary(kv => kv.Key, kv => new Role
-        {
-            ClinicId = _clinicId, Name = kv.Key, IsSystem = true, Permissions = kv.Value.ToList(),
-            Description = kv.Key switch
-            {
-                SystemRoles.Admin => "Full access to every module and setting",
-                SystemRoles.Dentist => "Clinical work: charts, treatment plans, notes",
-                SystemRoles.Receptionist => "Front desk: patients, appointments, payments, recovery calls",
-                _ => "Finance: invoices, payments, expenses, reports"
-            }
-        });
+        var roles = ClinicDefaults.Roles(_clinicId).ToDictionary(r => r.Name);
         db.Roles.AddRange(roles.Values);
 
         User NewUser(string email, string name, string? nameAr, string role, string? phone = null)
@@ -142,97 +140,19 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
 
     private void SeedProcedures()
     {
-        (string Code, string Name, string Ar, ProcedureCategory Cat, decimal Price, int Min, ToothConditionType? Result)[] list =
-        [
-            ("EXAM", "Consultation & examination", "استشارة وفحص", ProcedureCategory.Diagnostic, 15, 20, null),
-            ("PANO", "Panoramic X-ray", "صورة بانوراما", ProcedureCategory.Diagnostic, 25, 15, null),
-            ("PA", "Periapical X-ray", "صورة أشعة ذروية", ProcedureCategory.Diagnostic, 20, 10, null),
-            ("CLEAN", "Scaling & polishing", "تنظيف وتلميع", ProcedureCategory.Preventive, 35, 30, null),
-            ("FLUOR", "Fluoride application", "تطبيق الفلورايد", ProcedureCategory.Preventive, 15, 15, null),
-            ("SEAL", "Fissure sealant", "سد الشقوق", ProcedureCategory.Preventive, 20, 20, ToothConditionType.Sealant),
-            ("COMP", "Composite filling", "حشوة تجميلية", ProcedureCategory.Restorative, 40, 45, ToothConditionType.Filling),
-            ("RCT-A", "Root canal (anterior)", "علاج عصب أمامي", ProcedureCategory.Endodontic, 120, 60, ToothConditionType.RootCanal),
-            ("RCT-M", "Root canal (molar)", "علاج عصب ضرس", ProcedureCategory.Endodontic, 180, 90, ToothConditionType.RootCanal),
-            ("RERCT", "Root canal re-treatment", "إعادة علاج عصب", ProcedureCategory.Endodontic, 220, 90, ToothConditionType.RootCanal),
-            ("POST", "Post & core", "وتد وقلب", ProcedureCategory.Restorative, 60, 30, null),
-            ("PFM", "PFM crown", "تلبيسة خزف على معدن", ProcedureCategory.Prosthodontic, 180, 60, ToothConditionType.Crown),
-            ("ZIRC", "Zirconia crown", "تلبيسة زيركون", ProcedureCategory.Prosthodontic, 250, 60, ToothConditionType.Crown),
-            ("BRIDGE", "Bridge unit (zirconia)", "وحدة جسر زيركون", ProcedureCategory.Prosthodontic, 230, 60, ToothConditionType.Bridge),
-            ("VENEER", "E-max veneer", "قشرة إيماكس", ProcedureCategory.Cosmetic, 280, 60, ToothConditionType.Veneer),
-            ("WHITEN", "In-office whitening", "تبييض في العيادة", ProcedureCategory.Cosmetic, 200, 75, null),
-            ("EXT", "Simple extraction", "خلع بسيط", ProcedureCategory.OralSurgery, 30, 30, ToothConditionType.Extraction),
-            ("SEXT", "Surgical extraction", "خلع جراحي", ProcedureCategory.OralSurgery, 80, 45, ToothConditionType.Extraction),
-            ("WISDOM", "Impacted wisdom tooth surgery", "جراحة ضرس العقل", ProcedureCategory.OralSurgery, 150, 60, ToothConditionType.Extraction),
-            ("IMPL", "Dental implant (fixture)", "زراعة سن", ProcedureCategory.Implant, 650, 90, ToothConditionType.Implant),
-            ("IMPLCR", "Implant crown", "تاج على الزرعة", ProcedureCategory.Implant, 350, 45, ToothConditionType.Crown),
-            ("DEEP", "Deep cleaning (per quadrant)", "تنظيف عميق للربع", ProcedureCategory.Periodontal, 50, 45, null),
-            ("PULPO", "Pulpotomy (primary tooth)", "بتر لب سن لبني", ProcedureCategory.Pediatric, 45, 30, ToothConditionType.RootCanal),
-            ("SSC", "Stainless steel crown (child)", "تاج ستانلس للأطفال", ProcedureCategory.Pediatric, 55, 30, ToothConditionType.Crown),
-            ("GUARD", "Night guard", "واقي ليلي", ProcedureCategory.Prosthodontic, 120, 20, null),
-            ("ORTHO", "Orthodontic consultation", "استشارة تقويم", ProcedureCategory.Orthodontic, 20, 30, null)
-        ];
-        _proc = list.ToDictionary(p => p.Code, p => new Procedure
-        {
-            ClinicId = _clinicId, Code = p.Code, Name = p.Name, NameAr = p.Ar, Category = p.Cat, DefaultPrice = p.Price,
-            DefaultDurationMinutes = p.Min, ResultingCondition = p.Result
-        });
+        _proc = ClinicDefaults.Procedures(_clinicId).ToDictionary(p => p.Code);
         db.Procedures.AddRange(_proc.Values);
     }
 
     private Dictionary<(MessageTemplateType, string), MessageTemplate> SeedTemplates()
     {
-        (MessageTemplateType Type, string Lang, string Name, string Body)[] items =
-        [
-            (MessageTemplateType.AppointmentReminder, "en", "Appointment reminder",
-                "Hello {{patient_name}}, this is a reminder that you have an appointment with {{doctor}} on {{date}} at {{time}} at {{clinic_name}}. Reply 1 to confirm or call us to reschedule."),
-            (MessageTemplateType.AppointmentReminder, "ar", "تذكير بالموعد",
-                "مرحباً {{patient_name}}، نذكّرك بموعدك مع {{doctor}} يوم {{date}} الساعة {{time}} في {{clinic_name}}. أرسل 1 للتأكيد أو اتصل بنا لتغيير الموعد."),
-            (MessageTemplateType.TreatmentFollowUp, "en", "Treatment follow-up",
-                "Hello {{patient_name}}, your dentist recommended a treatment plan ({{treatment}}). We would be happy to help you schedule your next appointment. — {{clinic_name}}"),
-            (MessageTemplateType.TreatmentFollowUp, "ar", "متابعة خطة العلاج",
-                "مرحباً {{patient_name}}، أوصى طبيب الأسنان بخطة علاج ({{treatment}}). يسعدنا مساعدتك في حجز موعدك القادم. — {{clinic_name}}"),
-            (MessageTemplateType.MissedAppointment, "en", "Missed appointment",
-                "Hello {{patient_name}}, we noticed you missed your appointment. Would you like us to help you reschedule? — {{clinic_name}}"),
-            (MessageTemplateType.MissedAppointment, "ar", "موعد فائت",
-                "مرحباً {{patient_name}}، لاحظنا أنك لم تتمكن من حضور موعدك. هل ترغب أن نساعدك في تحديد موعد جديد؟ — {{clinic_name}}"),
-            (MessageTemplateType.Recall, "en", "Routine recall",
-                "Hello {{patient_name}}, it has been a while since your last dental visit. Would you like to schedule your next check-up and cleaning? — {{clinic_name}}"),
-            (MessageTemplateType.Recall, "ar", "تذكير بالفحص الدوري",
-                "مرحباً {{patient_name}}، مضى وقت على زيارتك الأخيرة لطبيب الأسنان. هل ترغب بحجز موعد للفحص والتنظيف الدوري؟ — {{clinic_name}}"),
-            (MessageTemplateType.PaymentReminder, "en", "Payment reminder",
-                "Hello {{patient_name}}, this is a friendly reminder that your account at {{clinic_name}} has an outstanding balance of {{amount}}. You can pay at the clinic, by card, or via CliQ. Thank you!"),
-            (MessageTemplateType.PaymentReminder, "ar", "تذكير بالدفع",
-                "مرحباً {{patient_name}}، نود تذكيرك بوجود رصيد مستحق بقيمة {{amount}} في {{clinic_name}}. يمكنك الدفع في العيادة أو بالبطاقة أو عبر كليك. شكراً لك!"),
-            (MessageTemplateType.PostTreatment, "en", "Clinical review",
-                "Hello {{patient_name}}, {{doctor}} would like to see you for a short review after your recent treatment ({{treatment}}). Shall we book a convenient time? — {{clinic_name}}"),
-            (MessageTemplateType.PostTreatment, "ar", "مراجعة بعد العلاج",
-                "مرحباً {{patient_name}}، يرغب {{doctor}} برؤيتك لمراجعة قصيرة بعد علاجك الأخير ({{treatment}}). هل نحجز لك موعداً مناسباً؟ — {{clinic_name}}")
-        ];
-        var map = items.ToDictionary(i => (i.Type, i.Lang), i => new MessageTemplate
-        {
-            ClinicId = _clinicId, Type = i.Type, Language = i.Lang, Name = i.Name, Body = i.Body, IsSystem = true
-        });
+        var map = ClinicDefaults.Templates(_clinicId).ToDictionary(t => (t.Type, t.Language));
         db.MessageTemplates.AddRange(map.Values);
         return map;
     }
 
-    private void SeedRules(Dictionary<(MessageTemplateType, string), MessageTemplate> t)
-    {
-        FollowUpRule R(string name, FollowUpTrigger trigger, int days, PriorityLevel p, MessageTemplateType? type, ProcedureCategory? cat = null) => new()
-        {
-            ClinicId = _clinicId, Name = name, Trigger = trigger, DelayDays = days, Priority = p, ProcedureCategory = cat,
-            MessageTemplateId = type is null ? null : t[(type.Value, "en")].Id
-        };
-        db.FollowUpRules.AddRange(
-            R("Missed appointment — follow up next day", FollowUpTrigger.MissedAppointment, 1, PriorityLevel.High, MessageTemplateType.MissedAppointment),
-            R("Treatment plan not started", FollowUpTrigger.TreatmentPlanNotStarted, 3, PriorityLevel.High, MessageTemplateType.TreatmentFollowUp),
-            R("Treatment plan still inactive — re-contact", FollowUpTrigger.TreatmentPlanInactive, 7, PriorityLevel.Medium, MessageTemplateType.TreatmentFollowUp),
-            R("Treatment unfinished", FollowUpTrigger.TreatmentUnfinished, 14, PriorityLevel.High, MessageTemplateType.TreatmentFollowUp),
-            R("Root canal review", FollowUpTrigger.ProcedureCompleted, 14, PriorityLevel.Medium, MessageTemplateType.PostTreatment, ProcedureCategory.Endodontic),
-            R("Post-surgery check", FollowUpTrigger.ProcedureCompleted, 7, PriorityLevel.Medium, MessageTemplateType.PostTreatment, ProcedureCategory.OralSurgery),
-            R("Routine cleaning recall (6 months)", FollowUpTrigger.RoutineRecall, 180, PriorityLevel.Low, MessageTemplateType.Recall),
-            R("Overdue balance", FollowUpTrigger.OverdueBalance, 0, PriorityLevel.Medium, MessageTemplateType.PaymentReminder));
-    }
+    private void SeedRules(Dictionary<(MessageTemplateType, string), MessageTemplate> t) =>
+        db.FollowUpRules.AddRange(ClinicDefaults.Rules(_clinicId, t.Values));
 
     // ================================================================== patients
 
@@ -316,6 +236,9 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
                     City = "Amman",
                     Address = Areas[_rng.Next(Areas.Length)],
                     PreferredLanguage = _rng.NextDouble() < 0.7 ? "ar" : "en",
+                    // Most demo patients agreed to messages at registration; some never answered the question.
+                    MessagingConsent = number % 7 == 0 ? MessagingConsent.Unknown : MessagingConsent.Granted,
+                    MessagingConsentSource = number % 7 == 0 ? null : "Registration form",
                     RegisteredAt = registered,
                     CreatedAt = registered,
                     ReferralSource = new[] { "Instagram", "Google", "Friend referral", "Walk-in", "Insurance network" }[_rng.Next(5)],

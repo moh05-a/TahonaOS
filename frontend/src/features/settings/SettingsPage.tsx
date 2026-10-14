@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -8,6 +8,8 @@ import { api, errorMessage } from '@/lib/api'
 import { dateTime, money } from '@/lib/format'
 import { Permissions } from '@/lib/utils'
 import { useTemplates } from '@/lib/queries'
+import { DataSection } from './DataSection'
+import { AccountSection, HolidaysEditor, WhatsAppSection } from './AccountSection'
 import type {
   AuditLog, ClinicProfile, ClinicSettings, FollowUpRule, FollowUpTrigger, Integrations, Paged, PriorityLevel, Procedure, ProcedureCategory, RecoverySettings,
   ToothConditionType,
@@ -20,12 +22,15 @@ import { Table, THead, Td, Th, Tr } from '@/components/ui/Table'
 import { PriorityBadge } from '@/components/StatusBadge'
 import { cn } from '@/lib/utils'
 
-type Section = 'clinic' | 'general' | 'recovery' | 'rules' | 'procedures' | 'integrations' | 'audit'
+type Section = 'clinic' | 'general' | 'recovery' | 'rules' | 'procedures' | 'integrations' | 'data' | 'account' | 'audit'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
   const { can } = useAuth()
-  const [section, setSection] = useState<Section>('recovery')
+  const [params] = useSearchParams()
+  const requested = params.get('tab') as Section | null
+  const [section, setSection] = useState<Section>(
+    requested && ['clinic', 'general', 'recovery', 'rules', 'procedures', 'integrations', 'data', 'account', 'audit'].includes(requested) ? requested : 'clinic')
   const nav: { value: Section; label: string; hidden?: boolean }[] = [
     { value: 'clinic', label: t('settings.clinic') },
     { value: 'general', label: t('settings.general') },
@@ -33,6 +38,8 @@ export default function SettingsPage() {
     { value: 'rules', label: t('settings.rules') },
     { value: 'procedures', label: t('settings.procedures') },
     { value: 'integrations', label: t('settings.integrations') },
+    { value: 'data', label: t('settings.data'), hidden: !can(Permissions.DataExport) },
+    { value: 'account', label: t('settings.account.title') },
     { value: 'audit', label: t('settings.audit'), hidden: !can(Permissions.AuditView) },
   ]
   return (
@@ -54,6 +61,8 @@ export default function SettingsPage() {
           {section === 'recovery' && <RecoverySection />}
           {section === 'rules' && <RulesSection />}
           {section === 'procedures' && <ProceduresSection />}
+          {section === 'data' && <DataSection />}
+          {section === 'account' && <AccountSection />}
           {section === 'integrations' && <IntegrationsSection />}
           {section === 'audit' && <AuditSection />}
         </div>
@@ -135,13 +144,26 @@ function GeneralSection() {
             })}
           </div>
         </div>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <HolidaysEditor value={f.holidays} onChange={(holidays) => setF({ ...f, holidays })} />
+        </div>
         <Field label={t('settings.reminderHours')}><Input type="number" min={1} max={168} value={f.appointmentReminderHours} onChange={(e) => setF({ ...f, appointmentReminderHours: Number(e.target.value) })} /></Field>
         <Field label={t('settings.invoicePrefix')}><Input value={f.invoicePrefix} onChange={(e) => setF({ ...f, invoicePrefix: e.target.value.toUpperCase() })} maxLength={10} /></Field>
         <Field label={t('settings.dueDays')}><Input type="number" min={0} value={f.invoiceDueDays} onChange={(e) => setF({ ...f, invoiceDueDays: Number(e.target.value) })} /></Field>
         <Field label={t('settings.taxRate')}><Input type="number" min={0} max={50} step="0.1" value={f.taxRatePercent} onChange={(e) => setF({ ...f, taxRatePercent: Number(e.target.value) })} /></Field>
-        <div className="space-y-3 sm:col-span-2 lg:col-span-3">
+        <div className="flex flex-col items-start gap-3 sm:col-span-2 lg:col-span-3">
           <Switch checked={f.whatsAppEnabled} onChange={(v) => setF({ ...f, whatsAppEnabled: v })} label={t('settings.whatsAppEnabled')} />
           <Switch checked={f.autoSendFollowUps} onChange={(v) => setF({ ...f, autoSendFollowUps: v })} label={t('settings.autoSend')} />
+          <Switch checked={f.requireConsentForAutomation} onChange={(v) => setF({ ...f, requireConsentForAutomation: v })} label={t('settings.requireConsent')} />
+          <div>
+            <p className="mb-1.5 text-xs font-medium text-ink-2">{t('settings.quietHours')}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input type="time" className="w-32" aria-label={t('common.from')} value={f.quietHoursStart.slice(0, 5)} onChange={(e) => setF({ ...f, quietHoursStart: `${e.target.value}:00` })} />
+              <span className="text-sm text-ink-3">{t('common.to')}</span>
+              <Input type="time" className="w-32" aria-label={t('common.to')} value={f.quietHoursEnd.slice(0, 5)} onChange={(e) => setF({ ...f, quietHoursEnd: `${e.target.value}:00` })} />
+            </div>
+            <p className="mt-1.5 text-xs text-ink-3">{t('settings.quietHint')}</p>
+          </div>
           <Switch checked={f.aiAssistantEnabled} onChange={(v) => setF({ ...f, aiAssistantEnabled: v })} label={t('settings.aiEnabled')} />
         </div>
       </div>
@@ -376,12 +398,13 @@ function IntegrationsSection() {
   const q = useQuery({ queryKey: ['integrations'], queryFn: () => api.get<Integrations>('/settings/integrations') })
   if (!q.data) return <LoadingBlock />
   const items = [
-    { icon: MessageCircle, name: 'WhatsApp Business', ok: q.data.whatsAppConfigured, detail: q.data.whatsAppConfigured ? 'Meta Cloud API' : 'Manual (wa.me links)', env: 'WHATSAPP__ACCESSTOKEN, WHATSAPP__PHONENUMBERID' },
+    { icon: MessageCircle, name: 'WhatsApp Business', ok: q.data.whatsAppConfigured, detail: q.data.whatsAppConfigured ? 'Meta Cloud API' : 'Manual (wa.me links)', env: 'WHATSAPP__APPSECRET, WHATSAPP__WEBHOOKVERIFYTOKEN, SECRETS__ENCRYPTIONKEY' },
     { icon: Bot, name: `AI (${q.data.aiProvider})`, ok: q.data.aiConfigured, detail: q.data.aiModel ?? 'Built-in rule-based mode', env: 'AI__APIKEY' },
-    { icon: HardDrive, name: 'File storage', ok: true, detail: q.data.storageProvider, env: 'STORAGE__ROOT' },
+    { icon: HardDrive, name: 'File storage', ok: true, detail: q.data.storageProvider, env: 'STORAGE__PROVIDER, STORAGE__S3__BUCKET' },
   ]
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      <WhatsAppSection />
       {items.map((i) => (
         <Card key={i.name} className="p-5">
           <div className="flex items-center gap-3">

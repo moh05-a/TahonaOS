@@ -17,5 +17,11 @@ public class AiOptions
 
     public int MaxTokens { get; set; } = 16000;
 
+    /// <summary>
+    /// What patient-level data the provider may receive: "off", "minimized" (default: file numbers instead of names
+    /// and phone numbers) or "full". Use "full" only under a data-processing agreement that covers patient data.
+    /// </summary>
+    public string PatientData { get; set; } = "minimized";
+
     public bool UseClaude => string.Equals(Provider?.Trim(), Claude, StringComparison.OrdinalIgnoreCase);
 }

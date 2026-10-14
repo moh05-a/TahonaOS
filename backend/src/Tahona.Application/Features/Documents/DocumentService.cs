@@ -17,16 +17,7 @@ public class DocumentService(IAppDbContext db, IFileStorage storage, ITenantCont
 {
     public const long MaxBytes = 25 * 1024 * 1024;
 
-    private static readonly Dictionary<string, string[]> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["image/jpeg"] = [".jpg", ".jpeg"],
-        ["image/png"] = [".png"],
-        ["image/webp"] = [".webp"],
-        ["application/pdf"] = [".pdf"],
-        ["application/dicom"] = [".dcm"],
-        ["application/octet-stream"] = [".dcm", ".stl"],
-        ["model/stl"] = [".stl"]
-    };
+    private const string AllowedMessage = "Allowed file types: JPG, PNG, WEBP, PDF, DICOM (.dcm), STL.";
 
     public async Task<IReadOnlyList<DocumentDto>> ListAsync(Guid patientId, DocumentCategory? category, CancellationToken ct)
     {
@@ -44,9 +35,18 @@ public class DocumentService(IAppDbContext db, IFileStorage storage, ITenantCont
         if (cmd.SizeBytes <= 0) throw RequestValidationException.For("file", "The file is empty.");
         if (cmd.SizeBytes > MaxBytes) throw RequestValidationException.For("file", "Files must be 25 MB or smaller.");
 
+        // The type is decided from the extension and confirmed against the file's own bytes;
+        // the content type sent by the browser is ignored.
         var extension = Path.GetExtension(cmd.FileName).ToLowerInvariant();
-        if (!AllowedTypes.TryGetValue(cmd.ContentType, out var extensions) || !extensions.Contains(extension))
-            throw RequestValidationException.For("file", "Allowed file types: JPG, PNG, WEBP, PDF, DICOM (.dcm), STL.");
+        if (!FileSignature.ContentTypes.TryGetValue(extension, out var contentType))
+            throw RequestValidationException.For("file", AllowedMessage);
+        if (!cmd.Content.CanSeek) throw RequestValidationException.For("file", "The file could not be read.");
+
+        var header = new byte[FileSignature.HeaderLength];
+        var read = await cmd.Content.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false, ct);
+        cmd.Content.Position = 0;
+        if (!FileSignature.Matches(extension, header.AsSpan(0, read), cmd.SizeBytes))
+            throw RequestValidationException.For("file", $"This file is not a valid {extension.TrimStart('.').ToUpperInvariant()} file. {AllowedMessage}");
 
         var safeName = SanitizeFileName(cmd.FileName);
         var clinicId = tenant.ClinicId ?? throw new UnauthorizedException();
@@ -58,7 +58,7 @@ public class DocumentService(IAppDbContext db, IFileStorage storage, ITenantCont
             Category = cmd.Category,
             FileName = safeName,
             StoragePath = path,
-            ContentType = cmd.ContentType,
+            ContentType = contentType,
             SizeBytes = cmd.SizeBytes,
             Description = string.IsNullOrWhiteSpace(cmd.Description) ? null : cmd.Description.Trim(),
             ToothNumber = cmd.ToothNumber,

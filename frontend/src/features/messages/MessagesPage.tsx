@@ -97,7 +97,7 @@ function MessageLog() {
         <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
           <Select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value as MessageStatus | ''); setPage(1) }} className="w-56">
             <option value="">{t('common.status')}: {t('common.all')}</option>
-            {(['ManualPending', 'Sent', 'Delivered', 'Read', 'Failed', 'Logged'] as MessageStatus[]).map((s) => <option key={s} value={s}>{t(`enum.MessageStatus.${s}`)}</option>)}
+            {(['ManualPending', 'Sent', 'Delivered', 'Read', 'Failed', 'Received', 'Logged'] as MessageStatus[]).map((s) => <option key={s} value={s}>{t(`enum.MessageStatus.${s}`)}</option>)}
           </Select>
           {patientId && <Link to={`/patients/${patientId}`} className="text-sm text-primary-ink hover:underline">{t('recovery.viewPatient')}</Link>}
         </div>
@@ -116,6 +116,8 @@ function MessageLog() {
                       <Link to={`/patients/${m.patientId}`} className="text-sm font-medium text-ink hover:underline">{m.patientName}</Link>
                       <span className="ltr">{m.toNumber}</span>·<span>{dateTime(m.createdAt)}</span>{m.sentBy && <span>· {m.sentBy}</span>}
                       <MessageStatusBadge status={m.status} />
+                      {m.direction === 'Inbound' && <Badge tone="info">{t('messages.inbound')}</Badge>}
+                      {m.isAutomated && <Badge>{t('messages.automated')}</Badge>}
                       {m.isRecovery && <Badge tone="recovery"><Sparkles className="size-3" />{t('nav.recovery')}</Badge>}
                       {m.templateName && <Badge>{m.templateName}</Badge>}
                     </div>

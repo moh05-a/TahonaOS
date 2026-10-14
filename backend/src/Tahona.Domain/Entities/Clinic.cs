@@ -1,4 +1,5 @@
 using Tahona.Domain.Common;
+using Tahona.Domain.Enums;
 
 namespace Tahona.Domain.Entities;
 
@@ -16,8 +17,17 @@ public class Clinic : BaseEntity
     public string TimeZone { get; set; } = "Asia/Amman";
     public string Currency { get; set; } = "JOD";
     public string DefaultLanguage { get; set; } = "en";
+    /// <summary>False once the account is archived: nobody can sign in. Suspension is <see cref="SubscriptionStatus"/>.</summary>
     public bool IsActive { get; set; } = true;
-    public string SubscriptionPlan { get; set; } = "Professional";
+    public string SubscriptionPlan { get; set; } = SubscriptionPlans.Founding;
+    public SubscriptionStatus SubscriptionStatus { get; set; } = SubscriptionStatus.Trial;
+    public DateTime? TrialEndsAt { get; set; }
+    /// <summary>End of the period the clinic has paid for (confirmed by an operator until a payment provider exists).</summary>
+    public DateTime? PaidUntil { get; set; }
+    public DateTime? SuspendedAt { get; set; }
+    public string? StatusReason { get; set; }
+    /// <summary>Sample data for demonstrations; never billed and excluded from business metrics.</summary>
+    public bool IsDemo { get; set; }
 
     public ClinicSettings? Settings { get; set; }
 }

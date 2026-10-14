@@ -62,7 +62,14 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("EndTime")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<Guid?>("FollowUpId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ImportBatchId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Notes")
@@ -71,6 +78,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("ReminderAttempts")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("ReminderSentAt")
                         .HasColumnType("timestamp with time zone");
@@ -97,6 +107,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FollowUpId");
+
+                    b.HasIndex("ImportBatchId");
 
                     b.HasIndex("TreatmentPlanId");
 
@@ -206,6 +218,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsDemo")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -214,6 +229,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<string>("NameAr")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("PaidUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Phone")
                         .HasMaxLength(30)
@@ -224,14 +242,30 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<string>("StatusReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("SubscriptionPlan")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("SubscriptionStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("SuspendedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TimeZone")
                         .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime?>("TrialEndsAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -242,6 +276,75 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Clinics");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ClinicInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClinicName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ContactName")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("TrialDays")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("ClinicInvitations");
                 });
 
             modelBuilder.Entity("Tahona.Domain.Entities.ClinicSettings", b =>
@@ -265,6 +368,10 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.PrimitiveCollection<List<DateOnly>>("Holidays")
+                        .IsRequired()
+                        .HasColumnType("date[]");
+
                     b.Property<int>("InvoiceDueDays")
                         .HasColumnType("integer");
 
@@ -284,6 +391,15 @@ namespace Tahona.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("NextReceiptNumber")
                         .HasColumnType("integer");
+
+                    b.Property<TimeOnly>("QuietHoursEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("QuietHoursStart")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<bool>("RequireConsentForAutomation")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("SlotMinutes")
                         .HasColumnType("integer");
@@ -315,6 +431,59 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ClinicSettings");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ClinicWhatsApp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ConnectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ConnectedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayPhoneNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("EncryptedAccessToken")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PhoneNumberId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VerifiedName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .IsUnique();
+
+                    b.HasIndex("PhoneNumberId")
+                        .IsUnique();
+
+                    b.ToTable("ClinicWhatsApps");
                 });
 
             modelBuilder.Entity("Tahona.Domain.Entities.ClinicalNote", b =>
@@ -610,6 +779,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AssignedToUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("AutoSendAttempts")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("BookedAppointmentId")
                         .HasColumnType("uuid");
 
@@ -749,6 +921,150 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.ToTable("FollowUpRules");
                 });
 
+            modelBuilder.Entity("Tahona.Domain.Entities.ImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CommittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CommittedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CreatedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ErrorCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)");
+
+                    b.Property<string>("HeadersJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("MappingJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("OptionsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("SkippedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SourceSystem")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<decimal?>("TotalAmount")
+                        .HasPrecision(14, 3)
+                        .HasColumnType("numeric(14,3)");
+
+                    b.Property<int>("TotalRows")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UndoneAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UpdatedCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("ClinicId", "CreatedAt");
+
+                    b.HasIndex("ClinicId", "FileHash");
+
+                    b.ToTable("ImportBatches");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ImportRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("MessagesJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("RowNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId", "RowNumber")
+                        .IsUnique();
+
+                    b.ToTable("ImportRows");
+                });
+
             modelBuilder.Entity("Tahona.Domain.Entities.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -779,10 +1095,16 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ImportBatchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("InvoiceNumber")
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<bool>("IsOpeningBalance")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("IssueDate")
                         .HasColumnType("timestamp with time zone");
@@ -820,6 +1142,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DentistId");
+
+                    b.HasIndex("ImportBatchId");
 
                     b.HasIndex("PatientId");
 
@@ -916,6 +1240,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Direction")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -928,12 +1255,22 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("FollowUpId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("FromNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<bool>("IsAutomated")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("ProviderMessageId")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("SentAt")
                         .HasColumnType("timestamp with time zone");
@@ -958,7 +1295,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProviderMessageId");
+                    b.HasIndex("ProviderMessageId")
+                        .IsUnique();
 
                     b.HasIndex("SentById");
 
@@ -967,6 +1305,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.HasIndex("ClinicId", "CreatedAt");
 
                     b.HasIndex("PatientId", "CreatedAt");
+
+                    b.HasIndex("ToNumber", "CreatedAt");
 
                     b.ToTable("Messages");
                 });
@@ -1136,6 +1476,10 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("FileNumber")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1153,6 +1497,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<string>("Gender")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("ImportBatchId")
+                        .HasColumnType("uuid");
 
                     b.Property<decimal?>("InsuranceCoveragePercent")
                         .HasPrecision(5, 2)
@@ -1179,6 +1526,18 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<string>("MedicalNotes")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("MessagingConsent")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("MessagingConsentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MessagingConsentSource")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
 
                     b.Property<string>("NationalId")
                         .HasMaxLength(40)
@@ -1209,6 +1568,10 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("RegisteredAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("SourceSystem")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -1235,6 +1598,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("FullNameAr"), "gin");
                     NpgsqlIndexBuilderExtensions.HasOperators(b.HasIndex("FullNameAr"), new[] { "gin_trgm_ops" });
 
+                    b.HasIndex("ImportBatchId");
+
                     b.HasIndex("PhoneNormalized")
                         .HasDatabaseName("IX_Patients_Phone_trgm");
 
@@ -1253,6 +1618,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.HasIndex("ClinicId", "PhoneNormalized");
 
                     b.HasIndex("ClinicId", "Status");
+
+                    b.HasIndex("ClinicId", "SourceSystem", "ExternalId");
 
                     b.ToTable("Patients");
                 });
@@ -1365,14 +1732,27 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasPrecision(14, 3)
                         .HasColumnType("numeric(14,3)");
 
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("CancelledById")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("ClinicId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("InvoiceId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Method")
                         .IsRequired()
@@ -1416,6 +1796,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CancelledById");
 
                     b.HasIndex("InvoiceId");
 
@@ -1597,6 +1979,13 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasPrecision(14, 3)
                         .HasColumnType("numeric(14,3)");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("ImportBatchId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("LastActivityAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1645,6 +2034,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DentistId");
+
+                    b.HasIndex("ImportBatchId");
 
                     b.HasIndex("PatientId");
 
@@ -1870,6 +2261,52 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Tahona.Domain.Entities.UserToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserTokens");
+                });
+
             modelBuilder.Entity("Tahona.Domain.Entities.Appointment", b =>
                 {
                     b.HasOne("Tahona.Domain.Entities.Dentist", "Dentist")
@@ -1908,6 +2345,27 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasForeignKey("Tahona.Domain.Entities.ClinicSettings", "ClinicId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsOne("Tahona.Domain.Entities.OnboardingState", "Onboarding", b1 =>
+                        {
+                            b1.Property<Guid>("ClinicSettingsId");
+
+                            b1.Property<DateTime?>("CompletedAt");
+
+                            b1.PrimitiveCollection<string>("ConfirmedSteps")
+                                .IsRequired();
+
+                            b1.HasKey("ClinicSettingsId");
+
+                            b1.ToTable("ClinicSettings");
+
+                            b1
+                                .ToJson("Onboarding")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ClinicSettingsId");
+                        });
 
                     b.OwnsOne("Tahona.Domain.Entities.RecoverySettings", "Recovery", b1 =>
                         {
@@ -1957,7 +2415,19 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                                 .HasForeignKey("ClinicSettingsId");
                         });
 
+                    b.Navigation("Onboarding")
+                        .IsRequired();
+
                     b.Navigation("Recovery")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ClinicWhatsApp", b =>
+                {
+                    b.HasOne("Tahona.Domain.Entities.Clinic", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
@@ -2079,6 +2549,33 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("MessageTemplate");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ImportBatch", b =>
+                {
+                    b.HasOne("Tahona.Domain.Entities.Clinic", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Tahona.Domain.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedBy");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ImportRow", b =>
+                {
+                    b.HasOne("Tahona.Domain.Entities.ImportBatch", "Batch")
+                        .WithMany("Rows")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Batch");
                 });
 
             modelBuilder.Entity("Tahona.Domain.Entities.Invoice", b =>
@@ -2214,6 +2711,11 @@ namespace Tahona.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Tahona.Domain.Entities.Payment", b =>
                 {
+                    b.HasOne("Tahona.Domain.Entities.User", "CancelledBy")
+                        .WithMany()
+                        .HasForeignKey("CancelledById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Tahona.Domain.Entities.Invoice", "Invoice")
                         .WithMany("Payments")
                         .HasForeignKey("InvoiceId")
@@ -2234,6 +2736,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("RecoveredFollowUpId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CancelledBy");
 
                     b.Navigation("Invoice");
 
@@ -2353,6 +2857,17 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("Tahona.Domain.Entities.UserToken", b =>
+                {
+                    b.HasOne("Tahona.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Tahona.Domain.Entities.Clinic", b =>
                 {
                     b.Navigation("Settings");
@@ -2361,6 +2876,11 @@ namespace Tahona.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Tahona.Domain.Entities.DentalTooth", b =>
                 {
                     b.Navigation("Conditions");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.ImportBatch", b =>
+                {
+                    b.Navigation("Rows");
                 });
 
             modelBuilder.Entity("Tahona.Domain.Entities.Invoice", b =>

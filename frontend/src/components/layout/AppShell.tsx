@@ -12,6 +12,7 @@ import { Menu, MenuItem } from '@/components/ui/Menu'
 import { Sidebar } from './Sidebar'
 import { CommandPalette } from './CommandPalette'
 import { NotificationBell } from './NotificationBell'
+import { AccountBanner } from './AccountBanner'
 
 export function AppShell() {
   const { t, i18n } = useTranslation()
@@ -58,7 +59,7 @@ export function AppShell() {
 
           <button
             onClick={() => setPaletteOpen(true)}
-            className="flex h-9 w-full max-w-md items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 text-sm text-ink-3 transition-colors hover:border-line-strong"
+            className="flex h-9 w-full min-w-0 max-w-md items-center gap-2 rounded-lg border border-line bg-surface-2 px-3 text-sm text-ink-3 transition-colors hover:border-line-strong"
           >
             <Search className="size-4" />
             <span className="flex-1 truncate text-start">{t('common.searchPlaceholder')}</span>
@@ -99,6 +100,7 @@ export function AppShell() {
 
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8">
+            <AccountBanner />
             <Outlet />
           </div>
         </main>

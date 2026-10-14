@@ -63,58 +63,60 @@ public class MessagesController(MessagingService messaging) : ControllerBase
     }
 }
 
-/// <summary>Meta WhatsApp Cloud API webhook: verification handshake + delivery status updates (signature-checked).</summary>
+/// <summary>
+/// Meta WhatsApp Cloud API webhook: the verification handshake, delivery statuses and inbound patient messages.
+/// Every POST must carry a valid X-Hub-Signature-256 over the raw request body. Processing is idempotent, so Meta
+/// re-delivering an event changes nothing.
+/// </summary>
 [ApiController]
 [Route("api/webhooks/whatsapp")]
 [AllowAnonymous]
 public class WhatsAppWebhookController(MessagingService messaging, IOptions<WhatsAppOptions> options, ILogger<WhatsAppWebhookController> logger)
     : ControllerBase
 {
+    private const int MaxBodyBytes = 1024 * 1024;
+
     [HttpGet]
     public IActionResult Verify([FromQuery(Name = "hub.mode")] string? mode, [FromQuery(Name = "hub.verify_token")] string? token,
         [FromQuery(Name = "hub.challenge")] string? challenge)
     {
         var expected = options.Value.WebhookVerifyToken;
-        if (mode == "subscribe" && !string.IsNullOrEmpty(expected) && token == expected) return Content(challenge ?? "");
+        if (mode == "subscribe" && !string.IsNullOrEmpty(expected) && token is not null
+            && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes(expected)))
+            return Content(challenge ?? "");
         return Forbid();
     }
 
     [HttpPost]
+    [RequestSizeLimit(MaxBodyBytes)]
     public async Task<IActionResult> Receive(CancellationToken ct)
     {
-        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
-        var body = await reader.ReadToEndAsync(ct);
-
         var secret = options.Value.AppSecret;
         if (string.IsNullOrEmpty(secret)) return NotFound(); // webhook not enabled
-        var signature = Request.Headers["X-Hub-Signature-256"].ToString();
-        var expected = "sha256=" + Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(body))).ToLowerInvariant();
-        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(signature), Encoding.UTF8.GetBytes(expected))) return Unauthorized();
+
+        using var buffer = new MemoryStream();
+        await Request.Body.CopyToAsync(buffer, ct);
+        var body = buffer.ToArray();
+        if (!WhatsAppWebhook.IsSignatureValid(body, Request.Headers["X-Hub-Signature-256"].ToString(), secret)) return Unauthorized();
 
         try
         {
-            using var doc = JsonDocument.Parse(body);
-            foreach (var entry in doc.RootElement.GetProperty("entry").EnumerateArray())
-            foreach (var change in entry.GetProperty("changes").EnumerateArray())
+            foreach (var e in WhatsAppWebhook.Parse(body))
             {
-                if (!change.GetProperty("value").TryGetProperty("statuses", out var statuses)) continue;
-                foreach (var s in statuses.EnumerateArray())
+                switch (e)
                 {
-                    var status = s.GetProperty("status").GetString() switch
-                    {
-                        "sent" => MessageStatus.Sent,
-                        "delivered" => MessageStatus.Delivered,
-                        "read" => MessageStatus.Read,
-                        "failed" => MessageStatus.Failed,
-                        _ => (MessageStatus?)null
-                    };
-                    if (status is null) continue;
-                    string? error = s.TryGetProperty("errors", out var errs) ? errs[0].GetProperty("title").GetString() : null;
-                    await messaging.ApplyProviderStatusAsync(s.GetProperty("id").GetString()!, status.Value, error, ct);
+                    case WhatsAppWebhook.StatusEvent status:
+                        await messaging.ApplyProviderStatusAsync(status.MessageId, status.Status, status.Error, ct);
+                        break;
+                    case WhatsAppWebhook.InboundEvent inbound:
+                        var result = await messaging.ReceiveInboundAsync(inbound.MessageId, inbound.From, inbound.Text, inbound.ReceivedAt, ct, inbound.PhoneNumberId);
+                        if (result == InboundResult.Unmatched)
+                            logger.LogInformation("Inbound WhatsApp message {MessageId} did not match a recent conversation; ignored.", inbound.MessageId);
+                        break;
                 }
             }
         }
-        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (JsonException ex)
         {
             logger.LogWarning(ex, "Unrecognised WhatsApp webhook payload");
         }

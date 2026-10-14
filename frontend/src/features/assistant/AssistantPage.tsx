@@ -71,6 +71,9 @@ export default function AssistantPage() {
                 ))}
               </div>
               <p className="mx-auto mt-6 flex max-w-lg items-start justify-center gap-1.5 text-xs text-ink-3"><ShieldCheck className="mt-0.5 size-3.5 shrink-0" />{t('assistant.disclaimer')}</p>
+              {status.data?.llmConfigured && (
+                <p className="mx-auto mt-2 max-w-lg text-xs text-ink-3">{t(`assistant.privacy.${status.data.patientData}`, { provider: status.data.provider })}</p>
+              )}
             </div>
           )}
 

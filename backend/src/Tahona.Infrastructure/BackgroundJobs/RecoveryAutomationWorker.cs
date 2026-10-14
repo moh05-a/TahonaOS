@@ -54,6 +54,23 @@ public sealed class RecoveryAutomationWorker(IServiceScopeFactory scopes, IOptio
         {
             try
             {
+                // A session lock held on its own connection for the whole run: a second API instance skips this
+                // clinic instead of sending the same reminders again. Closing the connection releases the lock.
+                using var lockScope = scopes.CreateScope();
+                var connection = lockScope.ServiceProvider.GetRequiredService<AppDbContext>().Database.GetDbConnection();
+                await connection.OpenAsync(ct);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT pg_try_advisory_lock(hashtextextended(@key, 0))";
+                var key = command.CreateParameter();
+                key.ParameterName = "key";
+                key.Value = $"automation:{clinicId}";
+                command.Parameters.Add(key);
+                if (await command.ExecuteScalarAsync(ct) is not true)
+                {
+                    logger.LogInformation("Recovery sync for clinic {ClinicId} is already running elsewhere; skipped.", clinicId);
+                    continue;
+                }
+
                 using var scope = scopes.CreateScope();
                 scope.ServiceProvider.GetRequiredService<ITenantContext>().Use(clinicId);
                 var result = await scope.ServiceProvider.GetRequiredService<RecoverySyncService>().SyncAsync(ct);

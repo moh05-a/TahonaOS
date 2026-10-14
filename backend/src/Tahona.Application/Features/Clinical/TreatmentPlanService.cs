@@ -178,6 +178,11 @@ public class TreatmentPlanService(
         var performedAt = request.PerformedAt?.UtcDateTime ?? now;
         if (performedAt > now.AddMinutes(5)) throw RequestValidationException.For("performedAt", "Treatment date cannot be in the future.");
         var dentistId = request.DentistId ?? plan.DentistId;
+        if (request.DentistId is not null && !await db.Dentists.AnyAsync(d => d.Id == request.DentistId, ct))
+            throw RequestValidationException.For("dentistId", "Dentist not found.");
+        if (request.AppointmentId is not null
+            && !await db.Appointments.AnyAsync(a => a.Id == request.AppointmentId && a.PatientId == plan.PatientId, ct))
+            throw RequestValidationException.For("appointmentId", "Appointment not found for this patient.");
 
         item.Status = TreatmentItemStatus.Completed;
         item.CompletedAt = performedAt;

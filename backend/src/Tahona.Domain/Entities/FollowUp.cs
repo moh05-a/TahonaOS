@@ -38,6 +38,8 @@ public class FollowUp : TenantEntity, IAuditable
     public Guid? AssignedToUserId { get; set; }
     public User? AssignedToUser { get; set; }
     public int ContactAttempts { get; set; }
+    /// <summary>Automatic message attempts; an automatic follow-up is tried once and never repeated.</summary>
+    public int AutoSendAttempts { get; set; }
     public DateTime? LastContactedAt { get; set; }
     public string? Outcome { get; set; }
     public DateTime? ResolvedAt { get; set; }

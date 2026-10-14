@@ -49,6 +49,8 @@ public static class Permissions
     public const string StaffManage = "staff.manage";
     public const string SettingsManage = "settings.manage";
     public const string AuditView = "audit.view";
+    public const string DataImport = "data.import";
+    public const string DataExport = "data.export";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -64,7 +66,8 @@ public static class Permissions
         MessagesView, MessagesSend, TemplatesManage,
         DocumentsView, DocumentsManage,
         ReportsView, AiUse,
-        StaffManage, SettingsManage, AuditView
+        StaffManage, SettingsManage, AuditView,
+        DataImport, DataExport
     ];
 }
 

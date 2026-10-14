@@ -178,7 +178,7 @@ public class InvoiceService(
 
     // ------------------------------------------------------------------ helpers
 
-    private async Task<Invoice> BuildInvoiceAsync(Guid patientId, Guid? dentistId, Guid? planId, IReadOnlyList<InvoiceItemRequest> lines,
+    internal async Task<Invoice> BuildInvoiceAsync(Guid patientId, Guid? dentistId, Guid? planId, IReadOnlyList<InvoiceItemRequest> lines,
         decimal discount, DateTimeOffset? dueDate, string? notes, bool draft, CancellationToken ct)
     {
         var settings = await db.ClinicSettings.AsNoTracking().FirstAsync(ct);

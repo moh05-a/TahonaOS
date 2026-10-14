@@ -9,6 +9,7 @@ import {
 import { api, errorMessage, http } from '@/lib/api'
 import { bytes, date, dateTime, money } from '@/lib/format'
 import { Permissions, saveBlob } from '@/lib/utils'
+import { PaymentRowActions } from '@/features/billing/PaymentActions'
 import type {
   Appointment, ClinicalNote, DocumentCategory, DocumentDto, InvoiceListItem, Message, Paged, PatientNote, PaymentListItem, TimelineEvent,
   TreatmentPlanListItem, TreatmentRecord,
@@ -198,15 +199,16 @@ export function PaymentsTab({ patientId, onPay }: { patientId: string; onPay: ()
       <CardHeader title={t('billing.payments')} actions={can(Permissions.PaymentsManage) && <Button size="sm" icon={<Plus className="size-3.5" />} onClick={onPay}>{t('billing.recordPayment')}</Button>} />
       {q.error ? <ErrorState error={q.error} /> : q.isLoading ? <LoadingBlock /> : !q.data?.items.length ? <EmptyState title={t('common.noResults')} /> : (
         <Table>
-          <THead><tr><Th>{t('billing.receipt')}</Th><Th>{t('common.date')}</Th><Th>{t('billing.invoice')}</Th><Th>{t('common.method')}</Th><Th className="text-end">{t('common.amount')}</Th></tr></THead>
+          <THead><tr><Th>{t('billing.receipt')}</Th><Th>{t('common.date')}</Th><Th>{t('billing.invoice')}</Th><Th>{t('common.method')}</Th><Th className="text-end">{t('common.amount')}</Th><Th /></tr></THead>
           <tbody>
             {q.data.items.map((p) => (
               <Tr key={p.id}>
                 <Td className="font-medium">{p.receiptNumber}{p.isRecovered && <Badge tone="recovery" className="ms-2"><Sparkles className="size-3" />{t('billing.recovered')}</Badge>}</Td>
                 <Td>{dateTime(p.paidAt)}</Td>
                 <Td className="text-ink-2">{p.invoiceNumber ?? '—'}</Td>
-                <Td>{t(`enum.PaymentMethod.${p.method}`)}</Td>
+                <Td>{t(`enum.PaymentMethod.${p.method}`)}{p.type === 'Refund' && <Badge tone="serious" className="ms-2">{t('billing.refund')}</Badge>}</Td>
                 <Td className={`tabular text-end font-medium ${p.type === 'Refund' ? 'text-critical-ink' : 'text-ink'}`}>{p.type === 'Refund' ? '−' : ''}{money(p.amount)}</Td>
+                <Td className="text-end"><PaymentRowActions payment={p} /></Td>
               </Tr>
             ))}
           </tbody>

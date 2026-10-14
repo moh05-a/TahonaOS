@@ -4,10 +4,12 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Tahona.Api.Infrastructure;
+using Tahona.Api.Operator;
 using Tahona.Application;
 using Tahona.Application.Common;
 using Tahona.Infrastructure;
@@ -20,6 +22,18 @@ LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
+
+// Outside development, logs are one JSON object per line so a log collector can index and alert on them.
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole(o =>
+    {
+        o.UseUtcTimestamp = true;
+        o.IncludeScopes = true;
+        o.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
+    });
+}
 
 // ------------------------------------------------------------------ configuration guard rails
 var jwtSecret = config["Jwt:Secret"];
@@ -101,14 +115,32 @@ builder.Services.AddSwaggerGen(o =>
     o.CustomSchemaIds(t => t.FullName!.Replace("+", "."));
 });
 
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
+
+// Behind a reverse proxy the client address arrives in X-Forwarded-For. Only proxies listed in Proxy:TrustedNetworks
+// (comma-separated CIDR ranges) are believed; loopback is trusted by default.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    foreach (var cidr in (config["Proxy:TrustedNetworks"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(cidr));
+});
 
 var app = builder.Build();
+
+// ------------------------------------------------------------------ operator commands (no web server)
+if (OperatorCli.IsOperatorCommand(args))
+{
+    await MigrateAsync(app, allowReset: false);
+    Environment.ExitCode = await OperatorCli.RunAsync(app, args);
+    return;
+}
 
 // ------------------------------------------------------------------ database & demo data
 await InitializeDatabaseAsync(app);
 
 // ------------------------------------------------------------------ pipeline
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 if (!app.Environment.IsDevelopment()) app.UseHsts();
@@ -131,9 +163,13 @@ app.UseCors();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
+app.UseMiddleware<RequestLogMiddleware>();
+app.UseMiddleware<ClinicAccessMiddleware>();
 
 app.MapControllers();
-app.MapHealthChecks("/health").AllowAnonymous();
+// Liveness: the process is up. Readiness: the database answers.
+app.MapHealthChecks("/health", new() { Predicate = _ => false }).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new() { Predicate = c => c.Tags.Contains("ready") }).AllowAnonymous();
 app.MapGet("/", () => Results.Redirect("/swagger")).AllowAnonymous().ExcludeFromDescription();
 app.MapFallback("/api/{**path}", () => Results.Problem(statusCode: 404, title: "Endpoint not found.")).AllowAnonymous();
 
@@ -141,14 +177,14 @@ app.Run();
 
 // ------------------------------------------------------------------ helpers
 
-static async Task InitializeDatabaseAsync(WebApplication app)
+static async Task MigrateAsync(WebApplication app, bool allowReset)
 {
     var config = app.Configuration;
     using var scope = app.Services.CreateScope();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-    if (config.GetValue("Seed:ResetDemo", false))
+    if (allowReset && config.GetValue("Seed:ResetDemo", false))
     {
         if (!app.Environment.IsDevelopment()) throw new InvalidOperationException("Seed:ResetDemo is only allowed in Development.");
         logger.LogWarning("Seed:ResetDemo=true — dropping and recreating the database.");
@@ -160,12 +196,23 @@ static async Task InitializeDatabaseAsync(WebApplication app)
         logger.LogInformation("Applying database migrations…");
         await db.Database.MigrateAsync();
     }
+}
 
+static async Task InitializeDatabaseAsync(WebApplication app)
+{
+    await MigrateAsync(app, allowReset: true);
+
+    var config = app.Configuration;
     if (config.GetValue("Seed:DemoData", false))
     {
+        // Demo accounts use well-known e-mail addresses, so they never appear outside Development by accident.
+        if (!app.Environment.IsDevelopment() && !config.GetValue("Seed:AllowOutsideDevelopment", false))
+            throw new InvalidOperationException(
+                "Seed:DemoData is enabled outside Development. Remove SEED__DEMODATA, or set SEED__ALLOWOUTSIDEDEVELOPMENT=true for a deliberate demo site.");
         var password = config["Seed:DemoPassword"];
         if (string.IsNullOrWhiteSpace(password))
             throw new InvalidOperationException("Seed:DemoData is enabled but SEED__DEMOPASSWORD is not set.");
+        using var scope = app.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<DemoDataSeeder>().SeedAsync(password, CancellationToken.None);
     }
 }

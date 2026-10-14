@@ -14,7 +14,12 @@ public record ContactPatientRequest(MessageChannel Channel, Guid? TemplateId, Me
 
 public record ContactPatientResult(Guid? MessageId, MessageStatus? MessageStatus, string? ManualSendUrl, string? Body, int FollowUpsUpdated);
 
-public enum ContactOutcome { NoResponse = 1, CallBackLater = 2, Declined = 3, AlreadyHandled = 4 }
+/// <summary>
+/// What a staff member recorded after trying to reach a patient.
+/// NoResponse and CallBackLater keep the item open and bring it back later. Declined, AlreadyHandled, Unreachable
+/// (wrong or disconnected number) and NotApplicable (should never have been listed) close it.
+/// </summary>
+public enum ContactOutcome { NoResponse = 1, CallBackLater = 2, Declined = 3, AlreadyHandled = 4, Unreachable = 5, NotApplicable = 6 }
 
 public record OutcomeRequest(ContactOutcome Outcome, string? Notes, IReadOnlyList<RecoveryIssueType>? IssueTypes);
 
@@ -316,7 +321,15 @@ public class RecoveryService(
                     f.LastContactedAt = now;
                     break;
                 case ContactOutcome.Declined:
+                case ContactOutcome.Unreachable:
+                    // Both follow an attempt to reach the patient, so the attempt is on record.
+                    f.Status = FollowUpStatus.Dismissed;
+                    f.ContactAttempts++;
+                    f.LastContactedAt = now;
+                    f.ResolvedAt = now;
+                    break;
                 case ContactOutcome.AlreadyHandled:
+                case ContactOutcome.NotApplicable:
                     f.Status = FollowUpStatus.Dismissed;
                     f.ResolvedAt = now;
                     break;

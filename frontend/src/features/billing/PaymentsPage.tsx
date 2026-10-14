@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { CreditCard, Download, MessageCircle, Pencil, Plus, Receipt, RotateCcw, Search, Sparkles, Trash2, TrendingUp, Wallet } from 'lucide-react'
+import { Ban, CreditCard, Download, MessageCircle, Pencil, Plus, Receipt, RotateCcw, Search, Sparkles, Trash2, TrendingUp, Wallet } from 'lucide-react'
 import { api, errorMessage } from '@/lib/api'
 import { clinicLocalToUtc, date, dateTime, isoDateInClinic, money, relative, utcToClinicLocal } from '@/lib/format'
 import { displayName, downloadCsv, Permissions } from '@/lib/utils'
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { ConfirmDialog, Dialog } from '@/components/ui/Dialog'
 import { Table, THead, Td, Th, Tr } from '@/components/ui/Table'
 import { RecordPaymentDialog } from './RecordPaymentDialog'
+import { PaymentRowActions } from './PaymentActions'
 import { SendMessageDialog } from '@/features/messages/SendMessageDialog'
 import type { PickedPatient } from '@/components/PatientPicker'
 
@@ -63,12 +64,15 @@ function PaymentsList() {
   const [debounced, setDebounced] = useState('')
   const [method, setMethod] = useState<PaymentMethod | ''>('')
   const [recovered, setRecovered] = useState(false)
+  const [cancelled, setCancelled] = useState(false)
   const [page, setPage] = useState(1)
   useEffect(() => { const id = setTimeout(() => { setDebounced(search); setPage(1) }, 200); return () => clearTimeout(id) }, [search])
 
   const q = useQuery({
-    queryKey: ['payments', debounced, method, recovered, page],
-    queryFn: () => api.get<Paged<PaymentListItem>>('/payments', { search: debounced, method, recoveredOnly: recovered || undefined, page, pageSize: 25 }),
+    queryKey: ['payments', debounced, method, recovered, cancelled, page],
+    queryFn: () => api.get<Paged<PaymentListItem>>('/payments', {
+      search: debounced, method, recoveredOnly: recovered || undefined, cancelled: cancelled || undefined, page, pageSize: 25,
+    }),
     placeholderData: keepPreviousData,
   })
   const exportCsv = () => downloadCsv('payments.csv', ['Receipt', 'Patient', 'Invoice', 'Type', 'Method', 'Amount', 'Date', 'Recovered'],
@@ -86,21 +90,36 @@ function PaymentsList() {
           {methods.map((m) => <option key={m} value={m}>{t(`enum.PaymentMethod.${m}`)}</option>)}
         </Select>
         <Button variant={recovered ? 'recovery' : 'outline'} size="sm" icon={<Sparkles className="size-3.5" />} onClick={() => { setRecovered((r) => !r); setPage(1) }}>{t('billing.recovered')}</Button>
+        <Button variant={cancelled ? 'secondary' : 'outline'} size="sm" icon={<Ban className="size-3.5" />} aria-pressed={cancelled}
+          onClick={() => { setCancelled((c) => !c); setPage(1) }}>{t('billing.cancelledEntries')}</Button>
         <Button variant="outline" size="sm" icon={<Download className="size-3.5" />} onClick={exportCsv}>{t('common.export')}</Button>
       </div>
+      {cancelled && <p className="border-b border-line bg-surface-2 px-5 py-2.5 text-sm text-ink-2">{t('billing.cancelledEntriesHint')}</p>}
       {q.error ? <ErrorState error={q.error} /> : q.isLoading ? <LoadingBlock rows={8} /> : !q.data?.items.length ? <EmptyState icon={<Receipt className="size-6" />} title={t('common.noResults')} /> : (
         <>
           <Table>
-            <THead><tr><Th>{t('billing.receipt')}</Th><Th>{t('common.patient')}</Th><Th>{t('billing.invoice')}</Th><Th>{t('common.date')}</Th><Th>{t('common.method')}</Th><Th className="text-end">{t('common.amount')}</Th></tr></THead>
+            <THead><tr><Th>{t('billing.receipt')}</Th><Th>{t('common.patient')}</Th><Th>{t('billing.invoice')}</Th><Th>{t('common.date')}</Th><Th>{t('common.method')}</Th><Th className="text-end">{t('common.amount')}</Th><Th /></tr></THead>
             <tbody>
               {q.data.items.map((p) => (
                 <Tr key={p.id}>
-                  <Td className="font-medium">{p.receiptNumber}{p.isRecovered && <Badge tone="recovery" className="ms-2"><Sparkles className="size-3" />{t('billing.recovered')}</Badge>}</Td>
+                  <Td className="font-medium">
+                    {p.receiptNumber}{p.isRecovered && <Badge tone="recovery" className="ms-2"><Sparkles className="size-3" />{t('billing.recovered')}</Badge>}
+                    {p.isCancelled && (
+                      <>
+                        <Badge tone="critical" className="ms-2">{t('billing.cancelled')}</Badge>
+                        <span className="mt-1 block max-w-xs text-xs font-normal text-ink-3">
+                          {t('billing.cancelledBy', { name: p.cancelledBy ?? '—', date: p.cancelledAt ? dateTime(p.cancelledAt) : '' })}
+                          {p.cancelReason && <span className="block text-ink-2" dir="auto">{p.cancelReason}</span>}
+                        </span>
+                      </>
+                    )}
+                  </Td>
                   <Td><Link to={`/patients/${p.patientId}`} className="hover:underline">{p.patientName}</Link></Td>
                   <Td>{p.invoiceId ? <Link to={`/invoices/${p.invoiceId}`} className="text-primary-ink hover:underline">{p.invoiceNumber}</Link> : '—'}</Td>
                   <Td className="text-ink-2">{dateTime(p.paidAt)}{p.receivedBy && <span className="block text-xs text-ink-3">{p.receivedBy}</span>}</Td>
                   <Td>{t(`enum.PaymentMethod.${p.method}`)}{p.type === 'Refund' && <Badge tone="serious" className="ms-2">{t('billing.refund')}</Badge>}</Td>
-                  <Td className={`tabular text-end font-medium ${p.type === 'Refund' ? 'text-critical-ink' : 'text-ink'}`}>{p.type === 'Refund' ? '−' : ''}{money(p.amount)}</Td>
+                  <Td className={`tabular text-end font-medium ${p.isCancelled ? 'text-ink-3 line-through' : p.type === 'Refund' ? 'text-critical-ink' : 'text-ink'}`}>{p.type === 'Refund' ? '−' : ''}{money(p.amount)}</Td>
+                  <Td className="text-end"><PaymentRowActions payment={p} /></Td>
                 </Tr>
               ))}
             </tbody>

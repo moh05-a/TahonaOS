@@ -44,7 +44,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, IClock clock) 
             new(ClaimTypes.Role, role.Name)
         };
         if (dentistId is not null) claims.Add(new Claim(TahonaClaims.DentistId, dentistId.Value.ToString()));
-        claims.AddRange(role.Permissions.Select(p => new Claim(TahonaClaims.Permission, p)));
+        claims.AddRange(role.EffectivePermissions.Select(p => new Claim(TahonaClaims.Permission, p)));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Secret));
         var token = new JwtSecurityToken(_options.Issuer, _options.Audience, claims, clock.UtcNow, expires,

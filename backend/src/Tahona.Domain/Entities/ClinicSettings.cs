@@ -8,8 +8,16 @@ public class ClinicSettings : TenantEntity, IAuditable
     public TimeOnly WorkingHoursEnd { get; set; } = new(20, 0);
     /// <summary>Comma separated DayOfWeek values the clinic is open (Jordan default: Sat–Thu).</summary>
     public string WorkingDays { get; set; } = "6,0,1,2,3,4";
+    /// <summary>Dates the clinic is closed (public holidays, leave). Booking on one asks for confirmation.</summary>
+    public List<DateOnly> Holidays { get; set; } = [];
     public int SlotMinutes { get; set; } = 30;
     public int AppointmentReminderHours { get; set; } = 24;
+
+    /// <summary>Automated messages are never sent between these clinic-local times (the window may cross midnight).</summary>
+    public TimeOnly QuietHoursStart { get; set; } = new(21, 0);
+    public TimeOnly QuietHoursEnd { get; set; } = new(9, 0);
+    /// <summary>When true, automated messages only go to patients whose consent is recorded as Granted.</summary>
+    public bool RequireConsentForAutomation { get; set; } = true;
 
     public string InvoicePrefix { get; set; } = "INV";
     public int NextInvoiceNumber { get; set; } = 1001;
@@ -24,6 +32,7 @@ public class ClinicSettings : TenantEntity, IAuditable
     public bool AiAssistantEnabled { get; set; } = true;
 
     public RecoverySettings Recovery { get; set; } = new();
+    public OnboardingState Onboarding { get; set; } = new();
 }
 
 /// <summary>

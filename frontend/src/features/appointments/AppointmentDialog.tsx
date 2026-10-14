@@ -6,7 +6,7 @@ import { Sparkles } from 'lucide-react'
 import { api, ApiError, errorMessage } from '@/lib/api'
 import { clinicLocalToUtc, utcToClinicLocal } from '@/lib/format'
 import { useDentists, useProcedures } from '@/lib/queries'
-import type { Appointment, Paged, TreatmentPlanListItem } from '@/lib/types'
+import type { Appointment, ClinicSettings, Paged, TreatmentPlanListItem } from '@/lib/types'
 import { Dialog } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Field, Input, Select, Switch, Textarea } from '@/components/ui/primitives'
@@ -64,6 +64,13 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
   useEffect(() => {
     if (!dentistId && dentists.data?.length) setDentistId(dentists.data[0].id)
   }, [dentists.data, dentistId])
+
+  // The chosen day against the clinic's closed dates and working days. Booking stays possible: emergencies happen.
+  const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.get<ClinicSettings>('/settings'), staleTime: 300_000, enabled: open })
+  const chosenDay = start ? start.slice(0, 10) : ''
+  const closedReason = !chosenDay || !settings.data ? null
+    : settings.data.holidays?.includes(chosenDay) ? 'holiday'
+      : !settings.data.workingDays.includes(new Date(`${chosenDay}T12:00:00`).getDay()) ? 'dayOff' : null
 
   const plans = useQuery({
     queryKey: ['patient-open-plans', patient?.id],
@@ -131,6 +138,9 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
         <Field label={t('appointments.start')} error={errors.startTime} required>
           <Input type="datetime-local" step={300} value={start} onChange={(e) => setStart(e.target.value)} invalid={!!errors.startTime} />
         </Field>
+        {closedReason && (
+          <p role="status" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning-ink sm:col-span-2">{t(`appointments.closed.${closedReason}`)}</p>
+        )}
         <Field label={t('common.treatment')} error={errors.treatment} required>
           <Input
             list="procedure-names"

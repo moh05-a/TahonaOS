@@ -10,6 +10,8 @@ interface AuthState {
   user: UserProfile | null
   status: 'loading' | 'authenticated' | 'anonymous'
   login: (email: string, password: string) => Promise<void>
+  /** Starts a session the server has just issued (e.g. after accepting an invitation). */
+  adopt: (session: LoginResponse) => void
   logout: () => Promise<void>
   can: (permission: Permission) => boolean
 }
@@ -66,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback((permission: Permission) => !!user?.permissions.includes(permission), [user])
 
-  const value = useMemo(() => ({ user, status, login, logout, can }), [user, status, login, logout, can])
+  const value = useMemo(() => ({ user, status, login, adopt: applySession, logout, can }), [user, status, login, applySession, logout, can])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

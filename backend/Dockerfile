@@ -13,11 +13,16 @@ RUN dotnet publish src/Tahona.Api/Tahona.Api.csproj -c Release -o /app --no-rest
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 # ICU + tzdata are required for Asia/Amman time zone handling and Arabic culture formatting.
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata libicu-dev && rm -rf /var/lib/apt/lists/*
+# libgssapi-krb5-2 is loaded by the PostgreSQL driver; without it every start logs a library error.
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata libicu-dev libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app .
 ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false \
     Storage__Root=/data/storage
+# The API runs as an unprivileged user, so the upload directory must belong to it before the volume is declared
+# (a new named volume copies this ownership). A volume created by an older image stays root-owned: fix it once with
+#   docker compose exec -u root api chown -R $APP_UID /data/storage
+RUN mkdir -p /data/storage && chown -R $APP_UID /data
 VOLUME ["/data/storage"]
 EXPOSE 8080
 USER $APP_UID

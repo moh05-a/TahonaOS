@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge, KeyValue, ProgressBar } from '@/components/ui/primitives'
 import { FollowUpStatusBadge, IssueBadge, PriorityBadge } from '@/components/StatusBadge'
 import { recoveryAction, recoveryReasons } from '@/features/recovery/recoveryText'
+import { FollowUpTrail } from './FollowUpTrail'
 
 /** Explains a patient's recovery score: the four weighted components, the reasons, and every open issue. */
 export function RecoveryPatientPanel({ patient, onClose, onContact, onBook, canManage }: {
@@ -94,6 +95,11 @@ export function RecoveryPatientPanel({ patient, onClose, onContact, onBook, canM
               </div>
             ))}
           </div>
+        </section>
+
+        <section>
+          <h4 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">{t('recovery.trail.title')}</h4>
+          <FollowUpTrail patientId={patient.patientId} />
         </section>
 
         <section className="divide-y divide-line">

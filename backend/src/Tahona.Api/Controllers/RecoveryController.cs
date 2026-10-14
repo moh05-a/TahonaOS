@@ -8,7 +8,8 @@ namespace Tahona.Api.Controllers;
 
 [ApiController]
 [Route("api/recovery")]
-public class RecoveryController(RecoveryService recovery, RecoverySyncService sync, FollowUpRuleService rules) : ControllerBase
+public class RecoveryController(RecoveryService recovery, RecoverySyncService sync, FollowUpRuleService rules, RecoveryHistoryService history)
+    : ControllerBase
 {
     /// <summary>The morning view: who to contact today and what they are worth.</summary>
     [HttpGet("dashboard"), HasPermission(Permissions.RecoveryView)]
@@ -17,6 +18,10 @@ public class RecoveryController(RecoveryService recovery, RecoverySyncService sy
     [HttpGet("patients/{patientId:guid}"), HasPermission(Permissions.RecoveryView)]
     public async Task<IActionResult> Patient(Guid patientId, CancellationToken ct) =>
         await recovery.GetPatientAsync(patientId, ct) is { } p ? Ok(p) : NoContent();
+
+    /// <summary>The record behind each follow-up for a patient: what raised it, what was done, how it ended.</summary>
+    [HttpGet("patients/{patientId:guid}/history"), HasPermission(Permissions.RecoveryView)]
+    public Task<IReadOnlyList<FollowUpTrailDto>> History(Guid patientId, CancellationToken ct) => history.GetAsync(patientId, ct);
 
     [HttpPost("patients/{patientId:guid}/contact"), HasPermission(Permissions.RecoveryManage)]
     public Task<ContactPatientResult> Contact(Guid patientId, ContactPatientRequest request, CancellationToken ct) =>

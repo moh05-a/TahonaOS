@@ -84,7 +84,8 @@ public class PatientService(
             p.MedicalNotes, p.Allergies, p.MedicalConditions, p.CurrentMedications,
             p.InsuranceProvider, p.InsurancePolicyNumber, p.InsuranceCoveragePercent,
             p.PreferredLanguage, p.Status, p.RegisteredAt, p.ReferralSource,
-            p.PrimaryDentistId, p.PrimaryDentist?.FullName, p.LastVisitAt, stats);
+            p.PrimaryDentistId, p.PrimaryDentist?.FullName, p.LastVisitAt, stats,
+            p.MessagingConsent, p.MessagingConsentAt, p.MessagingConsentSource);
     }
 
     private async Task<PatientStatsDto> GetStatsAsync(Guid patientId, DateTime? lastVisit, CancellationToken ct)
@@ -133,6 +134,7 @@ public class PatientService(
             RegisteredAt = clock.UtcNow
         };
         Apply(patient, request);
+        ApplyConsent(patient, request.MessagingConsent);
         db.Patients.Add(patient);
         await db.SaveChangesAsync(ct);
 
@@ -151,6 +153,7 @@ public class PatientService(
         var patient = await db.Patients.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw new NotFoundException("Patient", id);
         await EnsureDentistAsync(request.PrimaryDentistId, ct);
         Apply(patient, request);
+        ApplyConsent(patient, request.MessagingConsent);
         await db.SaveChangesAsync(ct);
     }
 
@@ -250,6 +253,15 @@ public class PatientService(
     {
         if (dentistId is not null && !await db.Dentists.AnyAsync(d => d.Id == dentistId, ct))
             throw RequestValidationException.For("primaryDentistId", "Selected dentist does not exist.");
+    }
+
+    /// <summary>Records who changed the patient's messaging consent and when; an unchanged value keeps its history.</summary>
+    private void ApplyConsent(Patient p, MessagingConsent? consent)
+    {
+        if (consent is null || consent == p.MessagingConsent) return;
+        p.MessagingConsent = consent.Value;
+        p.MessagingConsentAt = clock.UtcNow;
+        p.MessagingConsentSource = currentUser.FullName ?? "staff";
     }
 
     private static void Apply(Patient p, PatientUpsertRequest r)

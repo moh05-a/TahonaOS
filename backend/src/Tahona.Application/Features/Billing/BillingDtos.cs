@@ -53,14 +53,29 @@ public record PaymentQuery : PageQuery
     public DateTimeOffset? To { get; init; }
     public bool? RecoveredOnly { get; init; }
     public string? Search { get; init; }
+    /// <summary>True lists only entries that were cancelled as mistakes. They never appear otherwise.</summary>
+    public bool? Cancelled { get; init; }
 }
 
 public record PaymentListItemDto(
     Guid Id, string ReceiptNumber, Guid PatientId, string PatientName, Guid? InvoiceId, string? InvoiceNumber,
-    PaymentType Type, decimal Amount, PaymentMethod Method, DateTime PaidAt, string? Reference, string? ReceivedBy, bool IsRecovered);
+    PaymentType Type, decimal Amount, PaymentMethod Method, DateTime PaidAt, string? Reference, string? ReceivedBy, bool IsRecovered,
+    string? Notes, decimal RefundedAmount, bool IsCancelled, DateTime? CancelledAt, string? CancelledBy, string? CancelReason);
+
+/// <summary>
+/// A charge that has no invoice yet, taken together with its payment: a walk-in visit, or treatment nobody invoiced.
+/// It becomes an issued invoice with one line.
+/// </summary>
+public record NewChargeRequest(string Description, Guid? ProcedureId, decimal Total, Guid? DentistId);
 
 public record RecordPaymentRequest(
-    Guid PatientId, Guid? InvoiceId, decimal Amount, PaymentMethod Method, DateTimeOffset? PaidAt, string? Reference, string? Notes);
+    Guid PatientId, Guid? InvoiceId, decimal Amount, PaymentMethod Method, DateTimeOffset? PaidAt, string? Reference, string? Notes,
+    NewChargeRequest? NewCharge = null);
+
+/// <summary>Corrects how a payment was recorded. The amount, patient and invoice cannot change: cancel the entry and record it again.</summary>
+public record UpdatePaymentRequest(PaymentMethod Method, DateTimeOffset PaidAt, string? Reference, string? Notes);
+
+public record CancelPaymentRequest(string Reason);
 
 public record RecordPaymentResult(IReadOnlyList<Guid> PaymentIds, IReadOnlyList<string> ReceiptNumbers, decimal Applied, decimal RecoveredAmount);
 
@@ -122,7 +137,27 @@ public class RecordPaymentValidator : AbstractValidator<RecordPaymentRequest>
         RuleFor(x => x.Method).IsInEnum();
         RuleFor(x => x.Reference).MaximumLength(100);
         RuleFor(x => x.Notes).MaximumLength(1000);
+        When(x => x.NewCharge is not null, () =>
+        {
+            RuleFor(x => x.NewCharge!.Description).NotEmpty().MaximumLength(200);
+            RuleFor(x => x.NewCharge!.Total).GreaterThan(0).LessThan(1_000_000);
+        });
     }
+}
+
+public class UpdatePaymentValidator : AbstractValidator<UpdatePaymentRequest>
+{
+    public UpdatePaymentValidator()
+    {
+        RuleFor(x => x.Method).IsInEnum();
+        RuleFor(x => x.Reference).MaximumLength(100);
+        RuleFor(x => x.Notes).MaximumLength(1000);
+    }
+}
+
+public class CancelPaymentValidator : AbstractValidator<CancelPaymentRequest>
+{
+    public CancelPaymentValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
 }
 
 public class RefundValidator : AbstractValidator<RefundRequest>

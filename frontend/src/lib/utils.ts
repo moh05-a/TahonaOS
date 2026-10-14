@@ -21,6 +21,7 @@ export const Permissions = {
   DocumentsView: 'documents.view', DocumentsManage: 'documents.manage',
   ReportsView: 'reports.view', AiUse: 'ai.use',
   StaffManage: 'staff.manage', SettingsManage: 'settings.manage', AuditView: 'audit.view',
+  DataImport: 'data.import', DataExport: 'data.export',
 } as const
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions]

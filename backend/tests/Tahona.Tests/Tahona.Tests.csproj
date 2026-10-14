@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Tahona.Application\Tahona.Application.csproj" />
     <ProjectReference Include="..\..\src\Tahona.Infrastructure\Tahona.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Tahona.Domain\Tahona.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Tahona.Api\Tahona.Api.csproj" />
   </ItemGroup>
 
 </Project>

@@ -34,12 +34,33 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB:-tahona};Username=${POSTGRES_USER:-tahona};Password=${POSTGRES_PASSWORD}
       Jwt__Secret: ${JWT__SECRET:?Set JWT__SECRET in .env}
-      Cors__Origins: http://localhost:8080
+      Cors__Origins: ${CORS__ORIGINS:-http://localhost:8080}
+      App__PublicUrl: ${APP__PUBLICURL:-http://localhost:8080}
+      App__SupportContact: ${APP__SUPPORTCONTACT:-}
+      App__PaymentInstructions: ${APP__PAYMENTINSTRUCTIONS:-}
+      Secrets__EncryptionKey: ${SECRETS__ENCRYPTIONKEY:-}
+      Email__Host: ${EMAIL__HOST:-}
+      Email__Port: ${EMAIL__PORT:-587}
+      Email__Username: ${EMAIL__USERNAME:-}
+      Email__Password: ${EMAIL__PASSWORD:-}
+      Email__From: ${EMAIL__FROM:-}
+      Email__Security: ${EMAIL__SECURITY:-starttls}
+      Storage__Provider: ${STORAGE__PROVIDER:-local}
+      Storage__S3__Bucket: ${STORAGE__S3__BUCKET:-}
+      Storage__S3__Region: ${STORAGE__S3__REGION:-us-east-1}
+      Storage__S3__AccessKey: ${STORAGE__S3__ACCESSKEY:-}
+      Storage__S3__SecretKey: ${STORAGE__S3__SECRETKEY:-}
+      Storage__S3__ServiceUrl: ${STORAGE__S3__SERVICEURL:-}
+      Storage__S3__ForcePathStyle: ${STORAGE__S3__FORCEPATHSTYLE:-false}
       Seed__DemoData: ${SEED__DEMODATA:-false}
       Seed__DemoPassword: ${SEED__DEMOPASSWORD:-}
+      Seed__AllowOutsideDevelopment: ${SEED__ALLOWOUTSIDEDEVELOPMENT:-false}
+      # The web container proxies /api: trust Docker's private ranges for X-Forwarded-For.
+      Proxy__TrustedNetworks: ${PROXY__TRUSTEDNETWORKS:-172.16.0.0/12,192.168.0.0/16,10.0.0.0/8}
       Ai__Provider: ${AI__PROVIDER:-gemini}
       Ai__ApiKey: ${AI__APIKEY:-}
       Ai__Model: ${AI__MODEL:-}
+      Ai__PatientData: ${AI__PATIENTDATA:-minimized}
       WhatsApp__AccessToken: ${WHATSAPP__ACCESSTOKEN:-}
       WhatsApp__PhoneNumberId: ${WHATSAPP__PHONENUMBERID:-}
       WhatsApp__WebhookVerifyToken: ${WHATSAPP__WEBHOOKVERIFYTOKEN:-}

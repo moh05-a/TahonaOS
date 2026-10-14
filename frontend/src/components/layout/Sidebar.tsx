@@ -2,8 +2,8 @@ import { NavLink } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
-  BarChart3, Bot, CalendarDays, ClipboardList, CreditCard, FileText, LayoutDashboard, MessageCircle, Settings, Smile, Sparkles, Stethoscope, Users,
-  UserCog,
+  BarChart3, Bot, CalendarDays, ClipboardList, ConciergeBell, CreditCard, FileText, LayoutDashboard, ListChecks, MessageCircle, Settings, Smile, Sparkles,
+  Stethoscope, Upload, Users, UserCog,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
 import { api } from '@/lib/api'
@@ -28,6 +28,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     {
       items: [
         { to: '/', label: t('nav.dashboard'), icon: LayoutDashboard, permission: Permissions.DashboardView },
+        { to: '/front-desk', label: t('nav.frontDesk'), icon: ConciergeBell, permission: Permissions.AppointmentsView },
         { to: '/recovery', label: t('nav.recovery'), icon: Sparkles, permission: Permissions.RecoveryView, recovery: true },
         { to: '/appointments', label: t('nav.appointments'), icon: CalendarDays, permission: Permissions.AppointmentsView },
         { to: '/patients', label: t('nav.patients'), icon: Users, permission: Permissions.PatientsView },
@@ -58,6 +59,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     {
       label: t('nav.admin'),
       items: [
+        { to: '/onboarding', label: t('nav.onboarding'), icon: ListChecks, permission: Permissions.SettingsManage },
+        { to: '/import', label: t('nav.import'), icon: Upload, permission: Permissions.DataImport },
         { to: '/staff', label: t('nav.staff'), icon: UserCog, permission: Permissions.StaffManage },
         { to: '/settings', label: t('nav.settings'), icon: Settings, permission: Permissions.SettingsManage },
       ],

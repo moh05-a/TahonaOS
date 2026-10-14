@@ -6,6 +6,7 @@ using Tahona.Application.Common;
 using Tahona.Infrastructure.Auth;
 using Tahona.Application.Features.Ai;
 using Tahona.Application.Features.Dashboard;
+using Tahona.Application.Features.Messaging;
 using Tahona.Application.Features.Search;
 using Tahona.Application.Features.Settings;
 using Tahona.Domain.Authorization;
@@ -27,8 +28,12 @@ public class DashboardController(DashboardService dashboard) : ControllerBase
 
 [ApiController]
 [Route("api/reports")]
-public class ReportsController(AnalyticsService analytics) : ControllerBase
+public class ReportsController(AnalyticsService analytics, ImpactReportService impact) : ControllerBase
 {
+    /// <summary>Activity and outcomes in a period beside the equal period before it. Observed counts only.</summary>
+    [HttpGet("impact"), HasPermission(Permissions.ReportsView)]
+    public Task<ImpactReportDto> Impact([FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) => impact.GetAsync(from, to, ct);
+
     [HttpGet("analytics"), HasPermission(Permissions.ReportsView)]
     public Task<AnalyticsDto> Analytics([FromQuery] AnalyticsQuery query, CancellationToken ct) => analytics.GetAsync(query, ct);
 }
@@ -58,8 +63,22 @@ public class AiController(AssistantService assistant, ClinicalNoteAiService note
 
 [ApiController]
 [Route("api/settings")]
-public class SettingsController(SettingsService settings) : ControllerBase
+public class SettingsController(SettingsService settings, AccountService account, WhatsAppSettingsService whatsApp) : ControllerBase
 {
+    /// <summary>The clinic's plan, subscription state and how to pay.</summary>
+    [HttpGet("account"), HasPermission(Permissions.SettingsManage)]
+    public Task<AccountDto> Account(CancellationToken ct) => account.GetAsync(ct);
+
+    [HttpGet("whatsapp"), HasPermission(Permissions.SettingsManage)]
+    public Task<WhatsAppConnectionDto> WhatsApp(CancellationToken ct) => whatsApp.GetAsync(ct);
+
+    /// <summary>Connects the clinic's own WhatsApp Business number after checking the credentials with Meta.</summary>
+    [HttpPut("whatsapp"), HasPermission(Permissions.SettingsManage)]
+    public Task<WhatsAppConnectionDto> ConnectWhatsApp(ConnectWhatsAppRequest request, CancellationToken ct) => whatsApp.ConnectAsync(request, ct);
+
+    [HttpDelete("whatsapp"), HasPermission(Permissions.SettingsManage)]
+    public Task<WhatsAppConnectionDto> DisconnectWhatsApp(CancellationToken ct) => whatsApp.DisconnectAsync(ct);
+
     [HttpGet("clinic"), Authorize]
     public Task<ClinicProfileDto> Clinic(CancellationToken ct) => settings.GetProfileAsync(ct);
 

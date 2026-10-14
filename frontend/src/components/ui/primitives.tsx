@@ -54,9 +54,11 @@ const tones: Record<Tone, string> = {
   info: 'bg-[color-mix(in_srgb,var(--series-1)_14%,transparent)] text-[var(--series-1)]',
 }
 
-export function Badge({ tone = 'neutral', className, children, dot }: { tone?: Tone; className?: string; children: ReactNode; dot?: boolean }) {
+export function Badge({ tone = 'neutral', className, children, dot, title }: {
+  tone?: Tone; className?: string; children: ReactNode; dot?: boolean; title?: string
+}) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', tones[tone], className)}>
+    <span title={title} className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', tones[tone], className)}>
       {dot && <span className="size-1.5 rounded-full bg-current opacity-80" />}
       {children}
     </span>

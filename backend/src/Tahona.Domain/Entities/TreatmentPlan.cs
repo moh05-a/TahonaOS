@@ -27,6 +27,10 @@ public class TreatmentPlan : TenantEntity, IAuditable
     /// <summary>Last clinical activity on the plan (item completed / appointment attended).</summary>
     public DateTime? LastActivityAt { get; set; }
 
+    /// <summary>The plan's identifier in the system it was imported from.</summary>
+    public string? ExternalId { get; set; }
+    public Guid? ImportBatchId { get; set; }
+
     public ICollection<TreatmentPlanItem> Items { get; set; } = [];
 }
 

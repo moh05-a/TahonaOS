@@ -26,6 +26,12 @@ public class Appointment : TenantEntity, IAuditable
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
     public DateTime? ReminderSentAt { get; set; }
+    /// <summary>Automatic reminder attempts so far; automation stops after a small fixed number.</summary>
+    public int ReminderAttempts { get; set; }
+
+    /// <summary>The appointment's identifier in the system it was imported from.</summary>
+    public string? ExternalId { get; set; }
+    public Guid? ImportBatchId { get; set; }
 
     /// <summary>Set when the booking came from a recovery follow-up, for attribution.</summary>
     public Guid? FollowUpId { get; set; }

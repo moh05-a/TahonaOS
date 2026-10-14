@@ -32,6 +32,48 @@ public interface IWhatsAppProvider
     Task<WhatsAppSendResult> SendAsync(WhatsAppSendRequest request, CancellationToken ct);
 }
 
+/// <summary>The WhatsApp Business number a set of credentials belongs to, as Meta reports it.</summary>
+public record WhatsAppNumberInfo(string PhoneNumberId, string? DisplayPhoneNumber, string? VerifiedName);
+
+/// <summary>Checks WhatsApp Cloud API credentials with the provider before they are stored.</summary>
+public interface IWhatsAppAccountVerifier
+{
+    /// <returns>The number's details, or an error message from the provider.</returns>
+    Task<(WhatsAppNumberInfo? Number, string? Error)> VerifyAsync(string phoneNumberId, string accessToken, CancellationToken ct);
+}
+
+// ---------------------------------------------------------------- Secrets
+
+/// <summary>Encrypts secrets a clinic entrusts to the system (provider tokens) before they are stored.</summary>
+public interface ISecretProtector
+{
+    /// <summary>False when no encryption key is configured: secrets cannot be stored at all.</summary>
+    bool IsAvailable { get; }
+    string Protect(string secret);
+    /// <returns>The secret, or null when it cannot be decrypted (wrong or rotated key).</returns>
+    string? Unprotect(string protectedValue);
+}
+
+// ---------------------------------------------------------------- E-mail
+
+public record EmailMessage(string To, string Subject, string TextBody);
+
+/// <summary>Outgoing e-mail for account links (invitations, password resets). Optional: without it an operator passes links on.</summary>
+public interface IEmailSender
+{
+    bool IsConfigured { get; }
+    /// <returns>False when the message could not be handed to the mail server.</returns>
+    Task<bool> SendAsync(EmailMessage message, CancellationToken ct);
+}
+
+/// <summary>Facts about this deployment that staff see: where the app lives, how to pay, whom to contact.</summary>
+public interface IPlatformInfo
+{
+    string PublicUrl { get; }
+    string? SupportContact { get; }
+    string? PaymentInstructions { get; }
+}
+
 // ---------------------------------------------------------------- AI
 
 /// <summary>A read-only, tenant-scoped capability the model may call. Results are JSON produced from clinic data.</summary>
@@ -63,6 +105,19 @@ public interface IAiProvider
     Task<string?> CompleteJsonAsync(string system, string userText, System.Text.Json.JsonElement schema, CancellationToken ct);
 }
 
+/// <summary>
+/// How much patient-level data may leave the system for the AI provider.
+/// Off: aggregate figures only. Minimized: patients appear as file numbers, without names or phone numbers.
+/// Full: names and phone numbers are included (only with a reviewed data-processing agreement).
+/// </summary>
+public enum AiPatientDataMode { Off, Minimized, Full }
+
+/// <summary>Deployment-level AI data policy (Ai:PatientData).</summary>
+public interface IAiDataPolicy
+{
+    AiPatientDataMode PatientData { get; }
+}
+
 // ---------------------------------------------------------------- Sequences
 
 public enum SequenceKind { Patient, TreatmentPlan, Invoice, Receipt }
@@ -85,6 +140,8 @@ public interface ISearchProvider
 
 public interface IFileStorage
 {
+    /// <summary>Where files are kept, for display ("Local disk", "S3 bucket …").</summary>
+    string Name { get; }
     Task<string> SaveAsync(Guid clinicId, Guid patientId, string fileName, Stream content, CancellationToken ct);
     Task<Stream?> OpenReadAsync(string storagePath, CancellationToken ct);
     Task DeleteAsync(string storagePath, CancellationToken ct);

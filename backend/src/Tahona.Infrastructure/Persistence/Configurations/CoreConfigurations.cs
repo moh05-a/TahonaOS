@@ -18,6 +18,8 @@ public class ClinicConfiguration : IEntityTypeConfiguration<Clinic>
         b.Property(x => x.Currency).HasMaxLength(3);
         b.Property(x => x.Country).HasMaxLength(2);
         b.Property(x => x.DefaultLanguage).HasMaxLength(5);
+        b.Property(x => x.SubscriptionPlan).HasMaxLength(40);
+        b.Property(x => x.StatusReason).HasMaxLength(500);
         b.HasOne(x => x.Settings).WithOne().HasForeignKey<ClinicSettings>(s => s.ClinicId).OnDelete(DeleteBehavior.Cascade);
     }
 }
@@ -30,6 +32,7 @@ public class ClinicSettingsConfiguration : IEntityTypeConfiguration<ClinicSettin
         b.Property(x => x.WorkingDays).HasMaxLength(20);
         b.Property(x => x.InvoicePrefix).HasMaxLength(10);
         b.OwnsOne(x => x.Recovery, r => r.ToJson());
+        b.OwnsOne(x => x.Onboarding, o => o.ToJson());
     }
 }
 
@@ -115,6 +118,12 @@ public class PatientConfiguration : IEntityTypeConfiguration<Patient>
         b.Property(x => x.InsurancePolicyNumber).HasMaxLength(60);
         b.Property(x => x.InsuranceCoveragePercent).HasPrecision(5, 2);
         b.Property(x => x.PreferredLanguage).HasMaxLength(5);
+        b.Property(x => x.MessagingConsentSource).HasMaxLength(150);
+        b.Property(x => x.ExternalId).HasMaxLength(100);
+        b.Property(x => x.SourceSystem).HasMaxLength(80);
+        // Re-running an import finds the patients it already created by their source identifier.
+        b.HasIndex(x => new { x.ClinicId, x.SourceSystem, x.ExternalId });
+        b.HasIndex(x => x.ImportBatchId);
         b.Property(x => x.ReferralSource).HasMaxLength(80);
 
         // Search indexes: exact phone + name lookups, and trigram GIN indexes for fuzzy/partial matching.
@@ -150,6 +159,8 @@ public class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
         b.Property(x => x.Notes).HasMaxLength(2000);
         b.Property(x => x.Chair).HasMaxLength(30);
         b.Property(x => x.CancellationReason).HasMaxLength(500);
+        b.Property(x => x.ExternalId).HasMaxLength(100);
+        b.HasIndex(x => x.ImportBatchId);
         b.HasIndex(x => new { x.ClinicId, x.StartTime });
         b.HasIndex(x => new { x.DentistId, x.StartTime });
         b.HasIndex(x => new { x.PatientId, x.StartTime });

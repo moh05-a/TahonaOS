@@ -50,14 +50,31 @@ public class MessageConfiguration : IEntityTypeConfiguration<Message>
     {
         b.Property(x => x.Body).HasMaxLength(4000).IsRequired();
         b.Property(x => x.ToNumber).HasMaxLength(30);
+        b.Property(x => x.FromNumber).HasMaxLength(30);
         b.Property(x => x.ProviderMessageId).HasMaxLength(200);
         b.Property(x => x.Error).HasMaxLength(1000);
         b.HasIndex(x => new { x.PatientId, x.CreatedAt });
         b.HasIndex(x => new { x.ClinicId, x.CreatedAt });
-        b.HasIndex(x => x.ProviderMessageId);
+        // One row per provider message: a webhook event delivered twice cannot create a second message.
+        b.HasIndex(x => x.ProviderMessageId).IsUnique();
+        b.HasIndex(x => new { x.ToNumber, x.CreatedAt });
         b.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Template).WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne(x => x.SentBy).WithMany().HasForeignKey(x => x.SentById).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+public class ClinicWhatsAppConfiguration : IEntityTypeConfiguration<ClinicWhatsApp>
+{
+    public void Configure(EntityTypeBuilder<ClinicWhatsApp> b)
+    {
+        b.Property(x => x.PhoneNumberId).HasMaxLength(40).IsRequired();
+        b.HasIndex(x => x.PhoneNumberId).IsUnique();     // one number, one clinic
+        b.HasIndex(x => x.ClinicId).IsUnique();          // one number per clinic
+        b.Property(x => x.DisplayPhoneNumber).HasMaxLength(40);
+        b.Property(x => x.VerifiedName).HasMaxLength(200);
+        b.Property(x => x.EncryptedAccessToken).HasMaxLength(4000).IsRequired();
+        b.HasOne<Clinic>().WithMany().HasForeignKey(x => x.ClinicId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 

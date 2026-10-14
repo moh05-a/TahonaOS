@@ -43,6 +43,8 @@ public record PatientUpsertRequest
     public string? InsurancePolicyNumber { get; init; }
     public decimal? InsuranceCoveragePercent { get; init; }
     public string PreferredLanguage { get; init; } = "ar";
+    /// <summary>Omit to leave the recorded consent unchanged.</summary>
+    public MessagingConsent? MessagingConsent { get; init; }
     public PatientStatus Status { get; init; } = PatientStatus.Active;
     public string? ReferralSource { get; init; }
     public Guid? PrimaryDentistId { get; init; }
@@ -59,7 +61,8 @@ public record PatientDetailDto(
     string? MedicalNotes, string? Allergies, string? MedicalConditions, string? CurrentMedications,
     string? InsuranceProvider, string? InsurancePolicyNumber, decimal? InsuranceCoveragePercent,
     string PreferredLanguage, PatientStatus Status, DateTime RegisteredAt, string? ReferralSource,
-    Guid? PrimaryDentistId, string? PrimaryDentistName, DateTime? LastVisitAt, PatientStatsDto Stats);
+    Guid? PrimaryDentistId, string? PrimaryDentistName, DateTime? LastVisitAt, PatientStatsDto Stats,
+    MessagingConsent MessagingConsent, DateTime? MessagingConsentAt, string? MessagingConsentSource);
 
 public record TimelineEventDto(
     string Kind, string Title, string? Description, DateTime Date, decimal? Amount, string? Status, Guid? EntityId);
@@ -86,6 +89,7 @@ public class PatientUpsertValidator : AbstractValidator<PatientUpsertRequest>
         RuleFor(x => x.InsuranceCoveragePercent).InclusiveBetween(0, 100).When(x => x.InsuranceCoveragePercent.HasValue);
         RuleFor(x => x.PreferredLanguage).Must(l => l is "en" or "ar").WithMessage("Language must be en or ar.");
         RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.MessagingConsent).IsInEnum().When(x => x.MessagingConsent.HasValue);
         RuleFor(x => x.Gender).IsInEnum().When(x => x.Gender.HasValue);
         RuleFor(x => x.Address).MaximumLength(300);
         RuleFor(x => x.City).MaximumLength(80);

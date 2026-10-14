@@ -86,7 +86,8 @@ public class AnalyticsService(
         var refunds = payments.Where(p => p.Type == PaymentType.Refund).Sum(p => p.Amount);
         var expenses = await db.Expenses.AsNoTracking().Where(e => e.ExpenseDate >= from && e.ExpenseDate < to)
             .Select(e => new { e.Category, e.Amount }).ToListAsync(ct);
-        var invoiced = await db.Invoices.Where(i => i.IssueDate >= from && i.IssueDate < to && i.Status != InvoiceStatus.Void && i.Status != InvoiceStatus.Draft)
+        // Balances carried over from a previous system are debts, not work invoiced in this period.
+        var invoiced = await db.Invoices.Where(i => i.IssueDate >= from && i.IssueDate < to && i.Status != InvoiceStatus.Void && i.Status != InvoiceStatus.Draft && !i.IsOpeningBalance)
             .SumAsync(i => (decimal?)i.Total, ct) ?? 0;
         var outstanding = await db.Invoices.Where(i => (i.Status == InvoiceStatus.Issued || i.Status == InvoiceStatus.PartiallyPaid))
             .SumAsync(i => (decimal?)i.Balance, ct) ?? 0;

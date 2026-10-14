@@ -36,6 +36,7 @@ const schema = z.object({
   insurancePolicyNumber: z.string().max(60).optional(),
   insuranceCoveragePercent: z.string().optional().refine((v) => !v || (Number(v) >= 0 && Number(v) <= 100), '0–100'),
   preferredLanguage: z.enum(['ar', 'en']),
+  messagingConsent: z.enum(['Unknown', 'Granted', 'OptedOut']),
   status: z.enum(['Active', 'Inactive', 'Archived']),
   referralSource: z.string().max(80).optional(),
   primaryDentistId: z.string().optional(),
@@ -45,7 +46,7 @@ type FormValues = z.infer<typeof schema>
 const empty: FormValues = {
   fullName: '', fullNameAr: '', dateOfBirth: '', gender: '', phone: '', whatsAppNumber: '', email: '', address: '', city: 'Amman', nationalId: '',
   emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '', medicalNotes: '', allergies: '', medicalConditions: '',
-  currentMedications: '', insuranceProvider: '', insurancePolicyNumber: '', insuranceCoveragePercent: '', preferredLanguage: 'ar', status: 'Active',
+  currentMedications: '', insuranceProvider: '', insurancePolicyNumber: '', insuranceCoveragePercent: '', preferredLanguage: 'ar', messagingConsent: 'Unknown', status: 'Active',
   referralSource: '', primaryDentistId: '',
 }
 
@@ -79,7 +80,7 @@ export function PatientFormDialog({ open, onClose, patient, onSaved }: {
         emergencyContactRelation: blank(v.emergencyContactRelation), medicalNotes: blank(v.medicalNotes), allergies: blank(v.allergies),
         medicalConditions: blank(v.medicalConditions), currentMedications: blank(v.currentMedications), insuranceProvider: blank(v.insuranceProvider),
         insurancePolicyNumber: blank(v.insurancePolicyNumber), insuranceCoveragePercent: v.insuranceCoveragePercent ? Number(v.insuranceCoveragePercent) : null,
-        preferredLanguage: v.preferredLanguage, status: v.status, referralSource: blank(v.referralSource), primaryDentistId: v.primaryDentistId || null,
+        preferredLanguage: v.preferredLanguage, messagingConsent: v.messagingConsent, status: v.status, referralSource: blank(v.referralSource), primaryDentistId: v.primaryDentistId || null,
       }
       return patient ? api.put(`/patients/${patient.id}`, body).then(() => patient.id) : api.post<{ id: string }>('/patients', body).then((r) => r.id)
     },
@@ -134,6 +135,11 @@ export function PatientFormDialog({ open, onClose, patient, onSaved }: {
         <Field label={t('patients.fields.phone')} error={err('phone')} required><Input className="ltr" inputMode="tel" placeholder="07X XXX XXXX" {...register('phone')} invalid={!!errors.phone} /></Field>
         <Field label={t('patients.fields.whatsApp')} error={err('whatsAppNumber')} hint={t('common.optional')}><Input className="ltr" inputMode="tel" {...register('whatsAppNumber')} invalid={!!errors.whatsAppNumber} /></Field>
         <Field label={t('patients.fields.email')} error={err('email')}><Input type="email" {...register('email')} invalid={!!errors.email} /></Field>
+        <Field label={t('patients.fields.messagingConsent')} hint={t('patients.consentHint')}>
+          <Select {...register('messagingConsent')}>
+            {(['Unknown', 'Granted', 'OptedOut'] as const).map((c) => <option key={c} value={c}>{t(`patients.consent.${c}`)}</option>)}
+          </Select>
+        </Field>
         <Field label={t('patients.fields.address')} className="lg:col-span-2"><Input {...register('address')} /></Field>
         <Field label={t('patients.fields.city')}><Input {...register('city')} /></Field>
 

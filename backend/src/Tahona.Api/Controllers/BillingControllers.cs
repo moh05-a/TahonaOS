@@ -55,6 +55,21 @@ public class PaymentsController(PaymentService payments) : ControllerBase
     [HttpPost, HasPermission(Permissions.PaymentsManage)]
     public Task<RecordPaymentResult> Record(RecordPaymentRequest request, CancellationToken ct) => payments.RecordAsync(request, ct);
 
+    [HttpPut("{id:guid}"), HasPermission(Permissions.PaymentsManage)]
+    public async Task<IActionResult> Update(Guid id, UpdatePaymentRequest request, CancellationToken ct)
+    {
+        await payments.UpdateAsync(id, request, ct);
+        return NoContent();
+    }
+
+    /// <summary>Cancels an entry made by mistake. Needs the same permission as a refund, because it also takes money off the books.</summary>
+    [HttpPost("{id:guid}/cancel"), HasPermission(Permissions.PaymentsRefund)]
+    public async Task<IActionResult> Cancel(Guid id, CancelPaymentRequest request, CancellationToken ct)
+    {
+        await payments.CancelAsync(id, request, ct);
+        return NoContent();
+    }
+
     [HttpPost("{id:guid}/refund"), HasPermission(Permissions.PaymentsRefund)]
     public async Task<IActionResult> Refund(Guid id, RefundRequest request, CancellationToken ct) =>
         Ok(new { id = await payments.RefundAsync(id, request, ct) });

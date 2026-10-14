@@ -9,7 +9,7 @@ It has four parts:
 1. **Detection.** It finds revenue leaks in clinic data.
 2. **Follow-up automation.** It turns leaks into tasks, using configurable rules.
 3. **Priority scoring.** It ranks patients from 0 to 100.
-4. **Attribution.** It measures how much revenue was actually recovered.
+4. **Attribution.** It records which payments followed a contact about the same matter.
 
 Code: `backend/src/Tahona.Application/Features/Recovery/`
 (`RecoveryDetector.cs`, `RecoveryScorer.cs`, `RecoveryService.cs`, `RecoverySyncService.cs`, `RecoveryAttributionService.cs`).
@@ -44,7 +44,7 @@ Each detected issue maps to a `FollowUp` task, keyed by issue type and source re
 New ──contact──▶ Contacted ──(re-contact after N days)──▶ Re-contact due
   │                 │
   │                 ├── patient books ─────────▶ Booked
-  │                 ├── patient pays ──────────▶ Recovered (amount attributed)
+  │                 ├── patient pays for it ───▶ Recovered (amount attributed)
   │                 └── "not interested" ──────▶ Dismissed (never resurfaces)
   └── issue clears without outreach ──────────▶ Resolved (not counted as recovered)
 ```
@@ -121,10 +121,30 @@ All values live in **Settings → Recovery engine** and are stored per clinic in
 
 The scorer is a pure function covered by unit tests (`backend/tests/Tahona.Tests/RecoveryScorerTests.cs`).
 
-## 4. Recovered revenue (attribution)
+## 4. Collected after follow-up (attribution)
 
-A payment counts as **recovered** only when the clinic actually contacted the patient about a recovery issue, by WhatsApp or a logged phone call, within the **attribution window** (default 45 days) before the payment.
+A payment is counted as **collected after follow-up** only when all three of these hold:
 
-- Patients who return on their own are **not** credited to the engine. This keeps the "Recovered" number honest.
-- Refunds of recovered payments reduce the recovered total.
-- The **recovery rate** is the share of follow-ups contacted in the last 90 days that ended *Booked* or *Recovered*.
+1. The clinic contacted the patient about a recovery issue, by WhatsApp or a logged phone call, within the **attribution window** (default 45 days) before the payment.
+2. The payment settles an invoice that belongs to **that same matter**:
+
+   | Follow-up was about | The invoice must be |
+   |---|---|
+   | Outstanding balance | One that already existed when the clinic made contact |
+   | Treatment not started, or unfinished | For that treatment plan, and issued after the contact |
+   | Missed appointment, recall, clinical review | Issued after the contact, once a visit was booked |
+
+3. The follow-up was not dismissed.
+
+What this figure means, and what it does not:
+
+- It records a **sequence**: contact, then payment for the same matter. It does not prove the contact caused the payment. The interface says "collected after follow-up", not "recovered by".
+- Patients who return without any outreach are never counted.
+- A patient reminded about a recall who then pays an old, unrelated invoice is not counted.
+- Sending a message or booking an appointment counts nothing by itself. Only a recorded payment does.
+- Refunds of counted payments reduce the total.
+- **Potential value** on the Recovery page is an estimate of treatment and visits that could still happen. It is not money owed, apart from the outstanding-balance part.
+- The **follow-up rate** is the share of follow-ups contacted in the last 90 days that ended *Booked* or *Recovered*.
+
+The rule is `RecoveryAttributionService.Relates`, covered by `BillingAndAttributionTests`.
+

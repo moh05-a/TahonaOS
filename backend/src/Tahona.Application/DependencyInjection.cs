@@ -7,9 +7,12 @@ using Tahona.Application.Features.Billing;
 using Tahona.Application.Features.Clinical;
 using Tahona.Application.Features.Dashboard;
 using Tahona.Application.Features.Documents;
+using Tahona.Application.Features.Export;
+using Tahona.Application.Features.Import;
 using Tahona.Application.Features.Messaging;
 using Tahona.Application.Features.Notifications;
 using Tahona.Application.Features.Patients;
+using Tahona.Application.Features.Provisioning;
 using Tahona.Application.Features.Recovery;
 using Tahona.Application.Features.Search;
 using Tahona.Application.Features.Settings;
@@ -51,6 +54,22 @@ public static class DependencyInjection
         services.AddScoped<AssistantTools>();
         services.AddScoped<AssistantService>();
         services.AddScoped<ClinicalNoteAiService>();
+        services.AddScoped<ClinicProvisioningService>();
+        services.AddScoped<InvitationService>();
+        services.AddScoped<AccountRecoveryService>();
+        services.AddScoped<OnboardingService>();
+        services.AddScoped<ClinicAdminService>();
+        services.AddScoped<IImportHandler, PatientImportHandler>();
+        services.AddScoped<IImportHandler, AppointmentImportHandler>();
+        services.AddScoped<IImportHandler, BalanceImportHandler>();
+        services.AddScoped<IImportHandler, TreatmentPlanImportHandler>();
+        services.AddScoped<ImportService>();
+        services.AddScoped<DataExportService>();
+        services.AddScoped<FrontDeskService>();
+        services.AddScoped<RecoveryHistoryService>();
+        services.AddScoped<ImpactReportService>();
+        services.AddScoped<AccountService>();
+        services.AddScoped<WhatsAppSettingsService>();
         return services;
     }
 }

@@ -22,7 +22,7 @@ public class StructureNoteRequestValidator : AbstractValidator<StructureNoteRequ
 /// the prompt forbids adding information, the schema has no free "suggestions" field, and a
 /// post-check flags any section containing clinical terms the dentist did not write.
 /// </summary>
-public partial class ClinicalNoteAiService(IAiProvider ai)
+public partial class ClinicalNoteAiService(IAiProvider ai, IAiDataPolicy policy)
 {
     private const string Schema = """
         {
@@ -58,7 +58,8 @@ public partial class ClinicalNoteAiService(IAiProvider ai)
         var text = request.Text.Trim();
         StructuredNoteDto result;
 
-        if (ai.IsConfigured)
+        // A dictated note is patient-level clinical text: with Ai:PatientData=Off it never leaves the server.
+        if (ai.IsConfigured && policy.PatientData != AiPatientDataMode.Off)
         {
             var json = await ai.CompleteJsonAsync(System, $"Dentist's note:\n\"\"\"\n{text}\n\"\"\"", JsonDocument.Parse(Schema).RootElement, ct);
             if (json is null) throw new BusinessRuleException("The AI declined to structure this note. Please fill the sections manually.");

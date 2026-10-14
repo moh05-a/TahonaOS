@@ -81,6 +81,8 @@ public class ClinicalRecordsService(IAppDbContext db, DentalChartService chart, 
             : await db.Procedures.FirstOrDefaultAsync(p => p.Id == request.ProcedureId, ct)
               ?? throw RequestValidationException.For("procedureId", "Procedure not found.");
 
+        await EnsureAppointmentAsync(request.AppointmentId, patientId, ct);
+
         var now = clock.UtcNow;
         var performedAt = request.PerformedAt?.UtcDateTime ?? now;
         if (performedAt > now.AddMinutes(5)) throw RequestValidationException.For("performedAt", "Treatment date cannot be in the future.");
@@ -124,6 +126,7 @@ public class ClinicalRecordsService(IAppDbContext db, DentalChartService chart, 
     {
         if (!await db.Patients.AnyAsync(p => p.Id == patientId, ct)) throw new NotFoundException("Patient", patientId);
         var dentistId = await ResolveDentistAsync(request.DentistId, ct);
+        await EnsureAppointmentAsync(request.AppointmentId, patientId, ct);
 
         var note = new ClinicalNote { PatientId = patientId, DentistId = dentistId };
         Apply(note, request);
@@ -137,6 +140,7 @@ public class ClinicalRecordsService(IAppDbContext db, DentalChartService chart, 
         var note = await db.ClinicalNotes.Include(n => n.Dentist).FirstOrDefaultAsync(n => n.Id == noteId && n.PatientId == patientId, ct)
                    ?? throw new NotFoundException("Clinical note", noteId);
         EnsureAuthorOrAdmin(note);
+        await EnsureAppointmentAsync(request.AppointmentId, patientId, ct);
         Apply(note, request);
         await db.SaveChangesAsync(ct);
     }
@@ -165,6 +169,13 @@ public class ClinicalRecordsService(IAppDbContext db, DentalChartService chart, 
         }
         return await db.Dentists.Where(d => d.UserId == currentUser.UserId).Select(d => (Guid?)d.Id).FirstOrDefaultAsync(ct)
                ?? throw RequestValidationException.For("dentistId", "Select the treating dentist.");
+    }
+
+    /// <summary>A linked appointment must exist in this clinic and belong to the same patient.</summary>
+    private async Task EnsureAppointmentAsync(Guid? appointmentId, Guid patientId, CancellationToken ct)
+    {
+        if (appointmentId is not null && !await db.Appointments.AnyAsync(a => a.Id == appointmentId && a.PatientId == patientId, ct))
+            throw RequestValidationException.For("appointmentId", "Appointment not found for this patient.");
     }
 
     private void Apply(ClinicalNote n, ClinicalNoteRequest r)

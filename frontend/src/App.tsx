@@ -24,6 +24,12 @@ const MessagesPage = lazy(() => import('@/features/messages/MessagesPage'))
 const AssistantPage = lazy(() => import('@/features/assistant/AssistantPage'))
 const StaffPage = lazy(() => import('@/features/staff/StaffPage'))
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'))
+const OnboardingPage = lazy(() => import('@/features/onboarding/OnboardingPage'))
+const FrontDeskPage = lazy(() => import('@/features/frontdesk/FrontDeskPage'))
+const ForgotPasswordPage = lazy(() => import('@/features/auth/ForgotPasswordPage'))
+const ImportPage = lazy(() => import('@/features/import/ImportPage'))
+const WelcomePage = lazy(() => import('@/features/auth/WelcomePage'))
+const ResetPasswordPage = lazy(() => import('@/features/auth/ResetPasswordPage'))
 
 function FullPageSpinner() {
   return (
@@ -55,6 +61,9 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/welcome" element={<Suspense fallback={<FullPageSpinner />}><WelcomePage /></Suspense>} />
+        <Route path="/reset-password" element={<Suspense fallback={<FullPageSpinner />}><ResetPasswordPage /></Suspense>} />
+        <Route path="/forgot-password" element={<Suspense fallback={<FullPageSpinner />}><ForgotPasswordPage /></Suspense>} />
         <Route
           element={
             <RequireAuth>
@@ -63,6 +72,7 @@ export default function App() {
           }
         >
           <Route index element={<Guard permission={Permissions.DashboardView}><DashboardPage /></Guard>} />
+          <Route path="front-desk" element={<Guard permission={Permissions.AppointmentsView}><FrontDeskPage /></Guard>} />
           <Route path="recovery" element={<Guard permission={Permissions.RecoveryView}><RecoveryPage /></Guard>} />
           <Route path="appointments" element={<Guard permission={Permissions.AppointmentsView}><AppointmentsPage /></Guard>} />
           <Route path="patients" element={<Guard permission={Permissions.PatientsView}><PatientsPage /></Guard>} />
@@ -78,6 +88,8 @@ export default function App() {
           <Route path="assistant" element={<Guard permission={Permissions.AiUse}><AssistantPage /></Guard>} />
           <Route path="staff" element={<Guard permission={Permissions.StaffManage}><StaffPage /></Guard>} />
           <Route path="settings" element={<Guard permission={Permissions.SettingsManage}><SettingsPage /></Guard>} />
+          <Route path="onboarding" element={<Guard permission={Permissions.SettingsManage}><OnboardingPage /></Guard>} />
+          <Route path="import" element={<Guard permission={Permissions.DataImport}><ImportPage /></Guard>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

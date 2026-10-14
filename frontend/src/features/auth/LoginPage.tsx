@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -17,6 +17,9 @@ const schema = z.object({
 })
 type FormValues = z.infer<typeof schema>
 
+/** Demo sign-in hints are for local development only; a production build never lists account names. */
+const showDemo = import.meta.env.DEV
+
 const demoAccounts = [
   { email: 'admin@tahona.demo', role: 'Admin' },
   { email: 'reception@tahona.demo', role: 'Receptionist' },
@@ -32,7 +35,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: 'admin@tahona.demo', password: '' },
+    defaultValues: { email: showDemo ? 'admin@tahona.demo' : '', password: '' },
   })
 
   if (status === 'authenticated') return <Navigate to="/" replace />
@@ -92,8 +95,9 @@ export default function LoginPage() {
             <Input type="password" autoComplete="current-password" autoFocus invalid={!!errors.password} {...register('password')} />
           </Field>
           <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>{t('auth.signIn')}</Button>
+          <p className="text-center text-sm"><Link to="/forgot-password" className="font-medium text-primary-ink hover:underline">{t('auth.forgot')}</Link></p>
 
-          <div className="rounded-xl border border-dashed border-line p-3">
+          {showDemo && <div className="rounded-xl border border-dashed border-line p-3">
             <p className="mb-2 text-xs font-medium text-ink-2">{t('auth.demoAccounts')}</p>
             <div className="grid grid-cols-2 gap-1.5">
               {demoAccounts.map((a) => (
@@ -109,7 +113,7 @@ export default function LoginPage() {
               ))}
             </div>
             <p className="mt-2 text-[11px] text-ink-3">{t('auth.demoHint')}</p>
-          </div>
+          </div>}
         </form>
       </div>
     </div>

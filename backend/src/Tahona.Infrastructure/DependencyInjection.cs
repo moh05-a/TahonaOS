@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Tahona.Application.Common;
+using Tahona.Application.Features.Import;
 using Tahona.Domain.Entities;
 using Tahona.Infrastructure.Ai;
 using Tahona.Infrastructure.Auth;
@@ -40,10 +41,22 @@ public static class DependencyInjection
         services.AddSingleton<ITokenService, JwtTokenService>();
 
         services.Configure<StorageOptions>(config.GetSection(StorageOptions.Section));
-        services.AddSingleton<IFileStorage, LocalFileStorage>();
+        if (config.GetSection(StorageOptions.Section).Get<StorageOptions>() is { UseS3: true })
+            services.AddSingleton<IFileStorage, S3FileStorage>();
+        else
+            services.AddSingleton<IFileStorage, LocalFileStorage>();
+
+        services.Configure<AppOptions>(config.GetSection(AppOptions.Section));
+        services.AddSingleton<IPlatformInfo, PlatformInfo>();
+        services.Configure<SecretsOptions>(config.GetSection(SecretsOptions.Section));
+        services.AddSingleton<ISecretProtector, AesSecretProtector>();
+        services.Configure<EmailOptions>(config.GetSection(EmailOptions.Section));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.AddSingleton<ITabularFileReader, TabularFileReader>();
 
         // AI: Gemini by default (free-tier friendly); set Ai:Provider=claude to use Anthropic instead.
         services.Configure<AiOptions>(config.GetSection(AiOptions.Section));
+        services.AddSingleton<IAiDataPolicy, AiDataPolicy>();
         services.AddSingleton<ClaudeAiProvider>();
         services.AddHttpClient<GeminiAiProvider>(c => c.Timeout = TimeSpan.FromSeconds(90));
         services.AddScoped<IAiProvider>(sp =>
@@ -51,13 +64,11 @@ public static class DependencyInjection
                 ? sp.GetRequiredService<ClaudeAiProvider>()
                 : sp.GetRequiredService<GeminiAiProvider>());
 
-        // WhatsApp: real Cloud API when credentials are present, otherwise wa.me manual sending.
+        // WhatsApp: each clinic's own connected number, else deployment-wide credentials, else manual sending.
         services.Configure<WhatsAppOptions>(config.GetSection(WhatsAppOptions.Section));
-        services.AddHttpClient<MetaCloudWhatsAppProvider>(c => c.Timeout = TimeSpan.FromSeconds(20));
-        services.AddScoped<IWhatsAppProvider>(sp =>
-            sp.GetRequiredService<IOptions<WhatsAppOptions>>().Value.HasCloudApiCredentials
-                ? sp.GetRequiredService<MetaCloudWhatsAppProvider>()
-                : new ManualWhatsAppProvider());
+        services.AddHttpClient<MetaWhatsAppClient>(c => c.Timeout = TimeSpan.FromSeconds(20));
+        services.AddTransient<IWhatsAppAccountVerifier>(sp => sp.GetRequiredService<MetaWhatsAppClient>());
+        services.AddScoped<IWhatsAppProvider, TenantWhatsAppProvider>();
 
         services.Configure<AutomationOptions>(config.GetSection(AutomationOptions.Section));
         services.AddSingleton<RecoveryAutomationWorker>();

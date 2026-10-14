@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Tahona.Application.Common;
+using Tahona.Application.Features.Notifications;
+using Tahona.Domain.Authorization;
 using Tahona.Domain.Common;
 using Tahona.Domain.Entities;
 using Tahona.Domain.Enums;
@@ -26,6 +28,9 @@ public record SendMessageRequest(Guid PatientId, MessageChannel Channel, Guid? T
 
 public record SendMessageResult(Guid MessageId, MessageStatus Status, string Body, string? ManualSendUrl, string? Error, string Provider);
 
+/// <summary>Outcome of processing one inbound provider message.</summary>
+public enum InboundResult { Stored, Duplicate, Unmatched }
+
 public record MessageQuery : PageQuery
 {
     public Guid? PatientId { get; init; }
@@ -36,7 +41,7 @@ public record MessageQuery : PageQuery
 
 public record MessageDto(Guid Id, Guid PatientId, string PatientName, MessageChannel Channel, MessageDirection Direction,
     string Body, string? ToNumber, MessageStatus Status, string? Error, DateTime CreatedAt, DateTime? SentAt,
-    string? SentBy, string? TemplateName, bool IsRecovery);
+    string? SentBy, string? TemplateName, bool IsRecovery, bool IsAutomated, DateTime? DeliveredAt, DateTime? ReadAt);
 
 public record ConversationDto(Guid PatientId, string PatientName, string? PatientNameAr, string Phone, string LastMessage,
     DateTime LastMessageAt, MessageStatus LastStatus, int MessageCount);
@@ -76,8 +81,28 @@ public partial class MessagingService(
     ISearchProvider search,
     ICurrentUser currentUser,
     IClinicTime clinicTime,
+    ITenantContext tenant,
+    NotificationService notifications,
     IClock clock)
 {
+    /// <summary>WhatsApp lets a business reply with free text only within this period after the patient's last message.</summary>
+    public static readonly TimeSpan ServiceWindow = TimeSpan.FromHours(24);
+
+    /// <summary>An inbound message is matched to the clinic that most recently wrote to that number within this period.</summary>
+    private static readonly TimeSpan InboundMatchWindow = TimeSpan.FromDays(30);
+
+    /// <summary>A reply consisting of one of these words withdraws messaging consent.</summary>
+    private static readonly HashSet<string> OptOutKeywords = new(StringComparer.OrdinalIgnoreCase)
+        { "stop", "unsubscribe", "cancel", "إيقاف", "ايقاف", "توقف", "إلغاء", "الغاء", "الغاء الاشتراك", "إلغاء الاشتراك" };
+
+    /// <summary>True when <paramref name="now"/> falls inside the quiet period, which may cross midnight. Equal times mean no quiet period.</summary>
+    public static bool InQuietHours(TimeOnly now, TimeOnly start, TimeOnly end) =>
+        start != end && (start < end ? now >= start && now < end : now >= start || now < end);
+
+    /// <summary>Whether the automation engine may message a patient with this consent state.</summary>
+    public static bool AllowsAutomation(MessagingConsent consent, bool requireConsent) =>
+        consent == MessagingConsent.Granted || (consent == MessagingConsent.Unknown && !requireConsent);
+
     public static readonly IReadOnlyList<string> AllowedVariables =
         ["patient_name", "doctor", "date", "time", "clinic_name", "clinic_phone", "amount", "treatment"];
 
@@ -153,7 +178,9 @@ public partial class MessagingService(
         // Appointment context: explicit appointment, else the next upcoming one.
         var now = clock.UtcNow;
         var appointment = request.AppointmentId is not null
-            ? await db.Appointments.AsNoTracking().Include(a => a.Dentist).FirstOrDefaultAsync(a => a.Id == request.AppointmentId, ct)
+            ? await db.Appointments.AsNoTracking().Include(a => a.Dentist)
+                  .FirstOrDefaultAsync(a => a.Id == request.AppointmentId && a.PatientId == patient.Id, ct)
+              ?? throw RequestValidationException.For("appointmentId", "Appointment not found for this patient.")
             : await db.Appointments.AsNoTracking().Include(a => a.Dentist)
                 .Where(a => a.PatientId == patient.Id && a.StartTime > now
                             && (a.Status == AppointmentStatus.Scheduled || a.Status == AppointmentStatus.Confirmed))
@@ -204,11 +231,33 @@ public partial class MessagingService(
 
     // ---------------------------------------------------------------- sending
 
-    public async Task<SendMessageResult> SendAsync(SendMessageRequest request, CancellationToken ct)
+    /// <summary>A staff member sends or logs a message.</summary>
+    public Task<SendMessageResult> SendAsync(SendMessageRequest request, CancellationToken ct) => SendCoreAsync(request, false, ct);
+
+    /// <summary>
+    /// The automation engine sends a message. Callers decide eligibility (consent, quiet hours, attempt limits)
+    /// with <see cref="AllowsAutomation"/> and <see cref="InQuietHours"/> before calling.
+    /// </summary>
+    public Task<SendMessageResult> SendAutomatedAsync(SendMessageRequest request, CancellationToken ct) => SendCoreAsync(request, true, ct);
+
+    private async Task<SendMessageResult> SendCoreAsync(SendMessageRequest request, bool automated, CancellationToken ct)
     {
+        if (request.Channel is MessageChannel.Sms or MessageChannel.Email)
+            throw new BusinessRuleException("SMS and e-mail are not connected. Use WhatsApp, or log a phone call.");
+
+        var consent = await db.Patients.AsNoTracking().Where(p => p.Id == request.PatientId)
+                          .Select(p => (MessagingConsent?)p.MessagingConsent).FirstOrDefaultAsync(ct)
+                      ?? throw new NotFoundException("Patient", request.PatientId);
+        if (consent == MessagingConsent.OptedOut && request.Channel != MessageChannel.Phone)
+            throw new BusinessRuleException("This patient has opted out of messages. Call them instead, or record new consent on their profile.");
+
+        if (request.FollowUpId is not null && !await db.FollowUps.AnyAsync(f => f.Id == request.FollowUpId && f.PatientId == request.PatientId, ct))
+            throw RequestValidationException.For("followUpId", "Follow-up not found for this patient.");
+
         var rendered = await RenderAsync(new RenderRequest(request.PatientId, request.TemplateId, request.TemplateType, request.Body,
             request.AppointmentId, request.Amount, request.Treatment, request.DentistId), ct);
 
+        var now = clock.UtcNow;
         var message = new Message
         {
             PatientId = request.PatientId,
@@ -216,58 +265,69 @@ public partial class MessagingService(
             TemplateId = rendered.TemplateId,
             Body = rendered.Body,
             ToNumber = rendered.ToNumber,
-            SentById = currentUser.UserId,
+            SentById = automated ? null : currentUser.UserId,
+            IsAutomated = automated,
             FollowUpId = request.FollowUpId,
             AppointmentId = request.AppointmentId
         };
 
         string? manualUrl = null;
         var provider = "manual";
-        switch (request.Channel)
+        if (request.Channel == MessageChannel.WhatsApp)
         {
-            case MessageChannel.WhatsApp:
+            if (string.IsNullOrEmpty(rendered.ToNumber)) throw new BusinessRuleException("Patient has no phone number for WhatsApp.");
+            var providerTemplate = rendered.TemplateId is null ? null
+                : await db.MessageTemplates.Where(t => t.Id == rendered.TemplateId).Select(t => t.ProviderTemplateName).FirstOrDefaultAsync(ct);
+
+            // Through the Cloud API, free text is only deliverable while the patient's service window is open.
+            if (whatsApp.IsConfigured && string.IsNullOrWhiteSpace(providerTemplate) && !await ServiceWindowOpenAsync(request.PatientId, now, ct))
+                throw new BusinessRuleException(
+                    "WhatsApp only delivers free-text messages within 24 hours of the patient's last message. Choose a template that has an approved WhatsApp template name.");
+
+            var result = await whatsApp.SendAsync(new WhatsAppSendRequest(rendered.ToNumber, rendered.Body, providerTemplate, rendered.Language, rendered.OrderedValues), ct);
+            provider = whatsApp.Name;
+            if (result.RequiresManualSend)
             {
-                if (string.IsNullOrEmpty(rendered.ToNumber)) throw new BusinessRuleException("Patient has no phone number for WhatsApp.");
-                var providerTemplate = rendered.TemplateId is null ? null
-                    : await db.MessageTemplates.Where(t => t.Id == rendered.TemplateId).Select(t => t.ProviderTemplateName).FirstOrDefaultAsync(ct);
-                var result = await whatsApp.SendAsync(new WhatsAppSendRequest(rendered.ToNumber, rendered.Body, providerTemplate, rendered.Language, rendered.OrderedValues), ct);
-                provider = whatsApp.Name;
-                if (result.RequiresManualSend)
-                {
-                    message.Status = MessageStatus.ManualPending;
-                    manualUrl = result.ManualSendUrl;
-                }
-                else if (result.Success)
-                {
-                    message.Status = MessageStatus.Sent;
-                    message.SentAt = clock.UtcNow;
-                    message.ProviderMessageId = result.ProviderMessageId;
-                }
-                else
-                {
-                    message.Status = MessageStatus.Failed;
-                    message.Error = result.Error;
-                }
-                break;
-            }
-            case MessageChannel.Phone:
-                message.Status = MessageStatus.Logged;
-                message.SentAt = clock.UtcNow;
-                break;
-            default:
-                // SMS / e-mail gateways are not connected yet: log for manual handling.
+                // Opened in WhatsApp for a person to send. Not sent until staff confirm it.
                 message.Status = MessageStatus.ManualPending;
-                break;
+                manualUrl = result.ManualSendUrl;
+            }
+            else if (result.Success)
+            {
+                message.Status = MessageStatus.Sent;
+                message.SentAt = now;
+                message.ProviderMessageId = result.ProviderMessageId;
+            }
+            else
+            {
+                message.Status = MessageStatus.Failed;
+                message.Error = result.Error;
+            }
+        }
+        else
+        {
+            message.Status = MessageStatus.Logged; // phone call record
+            message.SentAt = now;
         }
 
         db.Messages.Add(message);
-        if (request.AppointmentId is not null && message.Status is MessageStatus.Sent or MessageStatus.ManualPending)
-        {
-            var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == request.AppointmentId, ct);
-            if (appt is not null) appt.ReminderSentAt = clock.UtcNow;
-        }
+        if (message.Status == MessageStatus.Sent) await MarkReminderSentAsync(message.AppointmentId, now, ct);
         await db.SaveChangesAsync(ct);
         return new SendMessageResult(message.Id, message.Status, message.Body, manualUrl, message.Error, provider);
+    }
+
+    private async Task<bool> ServiceWindowOpenAsync(Guid patientId, DateTime now, CancellationToken ct)
+    {
+        var since = now - ServiceWindow;
+        return await db.Messages.AnyAsync(m => m.PatientId == patientId && m.Direction == MessageDirection.Inbound
+                                               && m.Channel == MessageChannel.WhatsApp && m.CreatedAt >= since, ct);
+    }
+
+    private async Task MarkReminderSentAsync(Guid? appointmentId, DateTime now, CancellationToken ct)
+    {
+        if (appointmentId is null) return;
+        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId, ct);
+        if (appt is not null) appt.ReminderSentAt = now;
     }
 
     /// <summary>Staff confirm they sent a manual (wa.me) message.</summary>
@@ -277,21 +337,108 @@ public partial class MessagingService(
         if (m.Status != MessageStatus.ManualPending) return;
         m.Status = MessageStatus.Sent;
         m.SentAt = clock.UtcNow;
+        await MarkReminderSentAsync(m.AppointmentId, m.SentAt.Value, ct);
         await db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Delivery status callbacks from the WhatsApp provider webhook (no tenant context: matched by provider id).</summary>
+    /// <summary>
+    /// Delivery status callbacks from the WhatsApp provider webhook (no tenant context: matched by provider id).
+    /// Statuses only move forward (sent → delivered → read), so a repeated or late event changes nothing.
+    /// </summary>
     public async Task<bool> ApplyProviderStatusAsync(string providerMessageId, MessageStatus status, string? error, CancellationToken ct)
     {
-        var m = await db.Messages.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.ProviderMessageId == providerMessageId, ct);
+        var m = await db.Messages.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.ProviderMessageId == providerMessageId && x.Direction == MessageDirection.Outbound, ct);
         if (m is null) return false;
-        if (status > m.Status || status == MessageStatus.Failed)
+
+        var now = clock.UtcNow;
+        if (status == MessageStatus.Failed)
         {
-            m.Status = status;
+            if (m.Status is MessageStatus.Delivered or MessageStatus.Read) return true; // already reached the patient
+            m.Status = MessageStatus.Failed;
             m.Error = error;
         }
+        else if (status is MessageStatus.Sent or MessageStatus.Delivered or MessageStatus.Read && status > m.Status)
+        {
+            m.Status = status;
+            m.Error = null;
+        }
+        else return true;
+
+        if (status is MessageStatus.Delivered or MessageStatus.Read) m.DeliveredAt ??= now;
+        if (status == MessageStatus.Read) m.ReadAt ??= now;
         await db.SaveChangesAsync(ct);
         return true;
+    }
+
+    /// <summary>
+    /// Stores a patient's WhatsApp message (no tenant context: called by the webhook).
+    /// The clinic is the one whose connected number received it. Within that clinic, the message joins the conversation
+    /// the clinic last had with that number, or the single patient who has that phone number. With deployment-wide
+    /// credentials, where the receiving number says nothing, only the recent-conversation match is used.
+    /// Anything that cannot be tied to exactly one patient is dropped, never guessed.
+    /// A reply of "STOP" (or the Arabic equivalents) withdraws the patient's messaging consent.
+    /// </summary>
+    public async Task<InboundResult> ReceiveInboundAsync(string providerMessageId, string fromNumber, string text, DateTime receivedAt, CancellationToken ct,
+        string? phoneNumberId = null)
+    {
+        if (await db.Messages.IgnoreQueryFilters().AnyAsync(m => m.ProviderMessageId == providerMessageId, ct))
+            return InboundResult.Duplicate;
+
+        Guid? clinicId = string.IsNullOrWhiteSpace(phoneNumberId) ? null
+            : await db.ClinicWhatsApps.IgnoreQueryFilters().Where(w => w.PhoneNumberId == phoneNumberId && w.IsEnabled)
+                .Select(w => (Guid?)w.ClinicId).FirstOrDefaultAsync(ct);
+
+        var from = PhoneNumber.ToInternational(fromNumber);
+        var since = clock.UtcNow - InboundMatchWindow;
+        var conversations = db.Messages.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.Direction == MessageDirection.Outbound && m.Channel == MessageChannel.WhatsApp && m.ToNumber == from && m.CreatedAt >= since);
+        if (clinicId is not null) conversations = conversations.Where(m => m.ClinicId == clinicId);
+        var thread = await conversations.OrderByDescending(m => m.CreatedAt).Select(m => new { m.ClinicId, m.PatientId }).FirstOrDefaultAsync(ct);
+
+        if (thread is null && clinicId is not null)
+        {
+            // The patient wrote first, to the clinic's own number.
+            var national = PhoneNumber.Normalize(fromNumber);
+            var matches = await db.Patients.IgnoreQueryFilters().Where(p => p.ClinicId == clinicId && !p.IsDeleted && p.PhoneNormalized == national)
+                .Select(p => p.Id).Take(2).ToListAsync(ct);
+            if (matches.Count == 1) thread = new { ClinicId = clinicId.Value, PatientId = matches[0] };
+        }
+        if (thread is null) return InboundResult.Unmatched;
+
+        tenant.Use(thread.ClinicId);
+        var patient = await db.Patients.FirstOrDefaultAsync(p => p.Id == thread.PatientId, ct);
+        if (patient is null) return InboundResult.Unmatched;
+
+        var body = text.Trim();
+        var message = new Message
+        {
+            PatientId = patient.Id,
+            Channel = MessageChannel.WhatsApp,
+            Direction = MessageDirection.Inbound,
+            Body = body.Length > 4000 ? body[..4000] : body.Length == 0 ? "(empty message)" : body,
+            FromNumber = from,
+            Status = MessageStatus.Received,
+            ProviderMessageId = providerMessageId,
+            SentAt = receivedAt
+        };
+        db.Messages.Add(message);
+
+        var optedOut = OptOutKeywords.Contains(body.Trim('.', '!', ' ')) && patient.MessagingConsent != MessagingConsent.OptedOut;
+        if (optedOut)
+        {
+            patient.MessagingConsent = MessagingConsent.OptedOut;
+            patient.MessagingConsentAt = clock.UtcNow;
+            patient.MessagingConsentSource = "whatsapp-reply";
+        }
+        await db.SaveChangesAsync(ct);
+
+        await notifications.NotifyAsync(new NotifyRequest(
+            NotificationType.PatientReply, optedOut ? PriorityLevel.High : PriorityLevel.Medium,
+            optedOut ? $"{patient.FullName} opted out of messages" : $"WhatsApp reply from {patient.FullName}",
+            message.Body, $"/patients/{patient.Id}?tab=messages", nameof(Message), message.Id,
+            RequiredPermission: Permissions.MessagesSend), ct);
+        return InboundResult.Stored;
     }
 
     public async Task<PagedResult<MessageDto>> ListAsync(MessageQuery query, CancellationToken ct)
@@ -309,7 +456,7 @@ public partial class MessagingService(
         return await q.OrderByDescending(m => m.CreatedAt)
             .Select(m => new MessageDto(m.Id, m.PatientId, m.Patient.FullName, m.Channel, m.Direction, m.Body, m.ToNumber, m.Status,
                 m.Error, m.CreatedAt, m.SentAt, m.SentBy != null ? m.SentBy.FullName : null,
-                m.Template != null ? m.Template.Name : null, m.FollowUpId != null))
+                m.Template != null ? m.Template.Name : null, m.FollowUpId != null, m.IsAutomated, m.DeliveredAt, m.ReadAt))
             .ToPagedAsync(query, ct);
     }
 
@@ -337,5 +484,5 @@ public partial class MessagingService(
         whatsApp.IsConfigured ? "automatic" : "manual",
         whatsApp.IsConfigured
             ? "Messages are sent through the WhatsApp Business Cloud API."
-            : "No WhatsApp API credentials configured. Messages open in WhatsApp (wa.me) for staff to send, and are logged here. Add WHATSAPP__ACCESSTOKEN and WHATSAPP__PHONENUMBERID to enable automatic sending.");
+            : "Manual mode: each message opens in WhatsApp for a staff member to send, and is recorded here as 'awaiting manual send' until they confirm it. Nothing is sent automatically.");
 }

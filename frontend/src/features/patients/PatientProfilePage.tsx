@@ -88,6 +88,8 @@ export default function PatientProfilePage() {
               <h1 className="text-xl font-semibold text-ink">{displayName(p.fullName, p.fullNameAr)}</h1>
               <Badge tone={p.status === 'Active' ? 'good' : 'neutral'} dot>{t(`enum.PatientStatus.${p.status}`)}</Badge>
               {p.insuranceProvider && <Badge tone="info"><ShieldCheck className="size-3" />{p.insuranceProvider}{p.insuranceCoveragePercent != null && ` ${p.insuranceCoveragePercent}%`}</Badge>}
+              {p.messagingConsent === 'OptedOut' && <Badge tone="critical" title={t('patients.optedOut')}>{t('patients.consent.OptedOut')}</Badge>}
+              {p.messagingConsent === 'Unknown' && <Badge tone="warning" title={t('patients.consentUnknown')}>{t('patients.fields.messagingConsent')}: {t('patients.consent.Unknown')}</Badge>}
             </div>
             <p className="mt-1 text-sm text-ink-3">
               {otherName && `${otherName} · `}

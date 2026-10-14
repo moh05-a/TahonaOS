@@ -13,7 +13,7 @@ import { Field, Segmented, Select, Spinner, Textarea } from '@/components/ui/pri
 import { IssueBadge } from '@/components/StatusBadge'
 import { recoveryAction } from '@/features/recovery/recoveryText'
 
-type Outcome = 'NoResponse' | 'CallBackLater' | 'Declined' | 'AlreadyHandled'
+type Outcome = 'NoResponse' | 'CallBackLater' | 'Declined' | 'AlreadyHandled' | 'Unreachable' | 'NotApplicable'
 
 /**
  * Contact a recovery patient by WhatsApp (template rendered with their details) or log a phone call.
@@ -99,7 +99,7 @@ export function ContactDialog({ patient, onClose }: { patient: RecoveryPatient |
         done ? (
           <>
             <span className="me-auto text-xs text-ink-3">{t('recovery.outcome')}:</span>
-            {(['NoResponse', 'CallBackLater', 'Declined'] as Outcome[]).map((o) => (
+            {(['NoResponse', 'CallBackLater', 'Declined', 'Unreachable', 'NotApplicable'] as Outcome[]).map((o) => (
               <Button key={o} variant="outline" size="sm" loading={outcome.isPending && outcome.variables === o} onClick={() => outcome.mutate(o)}>
                 {t(`recovery.outcomes.${o}`)}
               </Button>
