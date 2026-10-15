@@ -66,7 +66,8 @@ public record PaymentListItemDto(
 /// A charge that has no invoice yet, taken together with its payment: a walk-in visit, or treatment nobody invoiced.
 /// It becomes an issued invoice with one line.
 /// </summary>
-public record NewChargeRequest(string Description, Guid? ProcedureId, decimal Total, Guid? DentistId);
+/// <param name="AppointmentId">The appointment whose fee this is. Its invoice is linked to it, so the fee is never charged twice.</param>
+public record NewChargeRequest(string Description, Guid? ProcedureId, decimal Total, Guid? DentistId, Guid? AppointmentId = null);
 
 public record RecordPaymentRequest(
     Guid PatientId, Guid? InvoiceId, decimal Amount, PaymentMethod Method, DateTimeOffset? PaidAt, string? Reference, string? Notes,

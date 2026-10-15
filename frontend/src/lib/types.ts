@@ -95,6 +95,10 @@ export interface Appointment {
   dentistId: string; dentistName: string; dentistColor: string; startTime: string; endTime: string; durationMinutes: number
   treatment: string; status: AppointmentStatus; notes?: string; chair?: string; treatmentPlanId?: string; fromRecovery: boolean
   reminderSentAt?: string; hasMedicalAlert: boolean
+  /** Price agreed when booking. Not a debt until the payment is taken. */
+  fee?: number
+  /** Set once the fee was taken: the invoice it made, and what is still owed on it. */
+  feeInvoiceId?: string; feeBalance?: number
 }
 
 // ------------------------------------------------------------------ clinical

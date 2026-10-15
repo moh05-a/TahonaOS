@@ -22,9 +22,7 @@ const showDemo = import.meta.env.DEV
 
 const demoAccounts = [
   { email: 'admin@tahona.demo', role: 'Admin' },
-  { email: 'reception@tahona.demo', role: 'Receptionist' },
   { email: 'dentist@tahona.demo', role: 'Dentist' },
-  { email: 'accountant@tahona.demo', role: 'Accountant' },
 ]
 
 export default function LoginPage() {

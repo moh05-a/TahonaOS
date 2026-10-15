@@ -77,6 +77,7 @@ public class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         b.HasIndex(x => x.ImportBatchId);
         b.HasOne(x => x.Patient).WithMany(p => p.Invoices).HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne(x => x.TreatmentPlan).WithMany().HasForeignKey(x => x.TreatmentPlanId).OnDelete(DeleteBehavior.SetNull);
+        b.HasOne(x => x.Appointment).WithMany(a => a.Invoices).HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.SetNull);
         b.HasOne(x => x.Dentist).WithMany().HasForeignKey(x => x.DentistId).OnDelete(DeleteBehavior.SetNull);
     }
 }

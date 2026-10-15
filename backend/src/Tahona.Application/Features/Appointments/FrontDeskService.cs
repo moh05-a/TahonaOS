@@ -39,7 +39,10 @@ public class FrontDeskService(IAppDbContext db, IClinicTime clinicTime, IClock c
             {
                 Dto = new AppointmentDto(a.Id, a.PatientId, a.Patient.FullName, a.Patient.FullNameAr, a.Patient.Phone, a.Patient.FileNumber,
                     a.DentistId, a.Dentist.FullName, a.Dentist.Color, a.StartTime, a.EndTime, a.Treatment, a.Status, a.Notes, a.Chair, a.TreatmentPlanId,
-                    a.FollowUpId != null, a.ReminderSentAt, a.Patient.Allergies != null || a.Patient.MedicalConditions != null),
+                    a.FollowUpId != null, a.ReminderSentAt, a.Patient.Allergies != null || a.Patient.MedicalConditions != null,
+                    a.Fee,
+                    a.Invoices.Where(i => i.Status != InvoiceStatus.Void).Select(i => (Guid?)i.Id).FirstOrDefault(),
+                    a.Invoices.Where(i => i.Status != InvoiceStatus.Void).Select(i => (decimal?)i.Balance).FirstOrDefault()),
                 a.Patient.MessagingConsent
             })
             .ToListAsync(ct);

@@ -7,7 +7,7 @@ public class Role : TenantEntity, IAuditable
 {
     public string Name { get; set; } = default!;
     public string? Description { get; set; }
-    /// <summary>System roles (Admin, Dentist, Receptionist, Accountant) cannot be deleted.</summary>
+    /// <summary>System roles (Admin, Dentist) cannot be deleted.</summary>
     public bool IsSystem { get; set; }
     public List<string> Permissions { get; set; } = [];
 

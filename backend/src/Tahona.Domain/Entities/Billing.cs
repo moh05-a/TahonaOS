@@ -9,6 +9,9 @@ public class Invoice : TenantEntity, IAuditable
     public Guid PatientId { get; set; }
     public Patient Patient { get; set; } = default!;
     public Guid? TreatmentPlanId { get; set; }
+    /// <summary>The appointment whose fee this invoice charges, when it was made by taking that fee.</summary>
+    public Guid? AppointmentId { get; set; }
+    public Appointment? Appointment { get; set; }
     public TreatmentPlan? TreatmentPlan { get; set; }
     public Guid? DentistId { get; set; }
     public Dentist? Dentist { get; set; }

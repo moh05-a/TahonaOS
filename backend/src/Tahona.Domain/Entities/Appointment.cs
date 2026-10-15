@@ -20,6 +20,14 @@ public class Appointment : TenantEntity, IAuditable
     public string? Notes { get; set; }
     public string? Chair { get; set; }
 
+    /// <summary>
+    /// What the patient is expected to pay for this visit, agreed when booking. It is not a debt: nothing is
+    /// invoiced until payment is taken, so a cancelled or missed visit owes nothing.
+    /// </summary>
+    public decimal? Fee { get; set; }
+    /// <summary>The invoice made when the fee was taken, if any (normally one; voided ones are ignored).</summary>
+    public List<Invoice> Invoices { get; set; } = [];
+
     public DateTime? ConfirmedAt { get; set; }
     public DateTime? ArrivedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

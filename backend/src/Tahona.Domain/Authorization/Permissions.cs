@@ -71,12 +71,14 @@ public static class Permissions
     ];
 }
 
+/// <summary>
+/// The built-in roles every clinic gets. There are two: the clinic owner (Admin) and the dentists. A clinic that
+/// wants a front-desk or finance role can make its own under Staff → Roles & permissions.
+/// </summary>
 public static class SystemRoles
 {
     public const string Admin = "Admin";
     public const string Dentist = "Dentist";
-    public const string Receptionist = "Receptionist";
-    public const string Accountant = "Accountant";
 
     public static readonly IReadOnlyDictionary<string, string[]> DefaultPermissions = new Dictionary<string, string[]>
     {
@@ -91,30 +93,8 @@ public static class SystemRoles
             Permissions.ClinicalView, Permissions.ClinicalManage,
             Permissions.DocumentsView, Permissions.DocumentsManage,
             Permissions.RecoveryView, Permissions.MessagesView,
-            Permissions.BillingView, Permissions.AiUse
-        ],
-        [Receptionist] =
-        [
-            Permissions.DashboardView,
-            Permissions.PatientsView, Permissions.PatientsCreate, Permissions.PatientsEdit,
-            Permissions.AppointmentsView, Permissions.AppointmentsManage,
-            Permissions.TreatmentView, Permissions.ChartView,
-            Permissions.BillingView, Permissions.PaymentsManage,
-            Permissions.RecoveryView, Permissions.RecoveryManage,
-            Permissions.MessagesView, Permissions.MessagesSend,
-            Permissions.DocumentsView, Permissions.DocumentsManage,
-            Permissions.AiUse
-        ],
-        [Accountant] =
-        [
-            Permissions.DashboardView,
-            Permissions.PatientsView,
-            Permissions.TreatmentView,
-            Permissions.BillingView, Permissions.InvoicesManage, Permissions.PaymentsManage, Permissions.PaymentsRefund,
-            Permissions.ExpensesView, Permissions.ExpensesManage,
-            Permissions.RecoveryView, Permissions.ReportsView,
-            Permissions.MessagesView, Permissions.MessagesSend,
-            Permissions.AiUse
+            // Dentists take payments and correct how one was recorded. Cancelling or refunding stays with the Admin.
+            Permissions.BillingView, Permissions.PaymentsManage, Permissions.AiUse
         ]
     };
 }

@@ -81,8 +81,6 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
         }
 
         var admin = NewUser("admin@tahona.demo", "Dr. Rana Haddad", "د. رنا حداد", SystemRoles.Admin, "0795550101");
-        var reception = NewUser("reception@tahona.demo", "Lina Saleh", "لينا صالح", SystemRoles.Receptionist, "0785550102");
-        var accountant = NewUser("accountant@tahona.demo", "Omar Nasser", "عمر ناصر", SystemRoles.Accountant, "0775550103");
         var dentistUsers = new[]
         {
             NewUser("dentist@tahona.demo", "Dr. Sami Abu-Zeid", "د. سامي أبو زيد", SystemRoles.Dentist, "0795550111"),
@@ -90,7 +88,7 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
             NewUser("dr.khaled@tahona.demo", "Dr. Khaled Obeidat", "د. خالد العبيدات", SystemRoles.Dentist, "0795550113"),
             NewUser("dr.noor@tahona.demo", "Dr. Noor Al-Masri", "د. نور المصري", SystemRoles.Dentist, "0795550114")
         };
-        _staff = [admin, reception, accountant, .. dentistUsers];
+        _staff = [admin, .. dentistUsers];
         db.Users.AddRange(_staff);
 
         _dentists =
@@ -110,7 +108,7 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
         var patients = BuildPatients();
         db.Patients.AddRange(patients);
         BuildStories(patients);
-        SeedExpenses(accountant.Id);
+        SeedExpenses(admin.Id);
 
         db.Appointments.AddRange(_appointments);
         db.TreatmentPlans.AddRange(_plans);
@@ -493,7 +491,7 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
         else Visit(p, d, Future(1, 12), "Crown preparation", 60, AppointmentStatus.Confirmed, plan.Id);
     }
 
-    /// <summary>Patient flagged by the engine, contacted by reception, came back and paid — counted as recovered revenue.</summary>
+    /// <summary>Patient flagged by the engine, contacted by the clinic, came back and paid — counted as recovered revenue.</summary>
     private void Recovered(Patient p, Dentist d, int monthsBack)
     {
         var monthStartLocal = new DateTime(Local(_now).Year, Local(_now).Month, 1);
@@ -652,10 +650,15 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
             CreatedAt = start.AddDays(-_rng.Next(2, 15)) < p.RegisteredAt ? p.RegisteredAt : start.AddDays(-_rng.Next(2, 15))
         };
         if (status == AppointmentStatus.Completed) { a.ArrivedAt = start.AddMinutes(-5); a.CompletedAt = a.EndTime; }
+        if (status is AppointmentStatus.Scheduled or AppointmentStatus.Confirmed) a.Fee = FeeFor(treatment);
         if (status == AppointmentStatus.Confirmed) a.ConfirmedAt = _now.AddHours(-_rng.Next(2, 40));
         _appointments.Add(a);
         return a;
     }
+
+    /// <summary>The price-list price of a visit booked under a procedure's name, as the booking dialog would fill it in.</summary>
+    private decimal? FeeFor(string treatment) =>
+        _proc.Values.FirstOrDefault(p => string.Equals(p.Name, treatment, StringComparison.OrdinalIgnoreCase))?.DefaultPrice;
 
     /// <summary>Appointment today at a fixed local time; status follows the clock (completed in the morning, upcoming later).</summary>
     private Appointment TodayVisit(Patient p, Dentist d, int hour, int minute, string treatment, int minutes, string[]? completedCodes)
@@ -670,7 +673,8 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
         var a = new Appointment
         {
             ClinicId = _clinicId, PatientId = p.Id, DentistId = d.Id, StartTime = start, EndTime = end, Treatment = treatment,
-            Status = status, Chair = $"Chair {_rng.Next(1, 4)}", CreatedAt = _now.AddDays(-_rng.Next(1, 10))
+            Status = status, Chair = $"Chair {_rng.Next(1, 4)}", CreatedAt = _now.AddDays(-_rng.Next(1, 10)),
+            Fee = status == AppointmentStatus.Completed ? null : FeeFor(treatment)
         };
         if (status is AppointmentStatus.Completed or AppointmentStatus.InTreatment or AppointmentStatus.Arrived) a.ArrivedAt = start.AddMinutes(-5);
         if (status == AppointmentStatus.Completed) a.CompletedAt = end;
@@ -808,7 +812,7 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
         {
             ClinicId = _clinicId, ReceiptNumber = $"RC-{_settings.NextReceiptNumber++}", PatientId = inv.PatientId, InvoiceId = inv.Id,
             Amount = amount, Method = PickMethod(), PaidAt = at > _now ? _now : at, CreatedAt = at > _now ? _now : at,
-            ReceivedById = _staff[1].Id
+            ReceivedById = _staff[0].Id
         };
         if (pay.Method is PaymentMethod.Card or PaymentMethod.CliQ or PaymentMethod.BankTransfer) pay.Reference = $"TX{_rng.Next(100000, 999999)}";
         inv.AmountPaid += amount;
@@ -830,7 +834,7 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
         {
             ClinicId = _clinicId, PatientId = p.Id, IssueType = type, SourceEntityType = sourceType, SourceEntityId = sourceId, Title = title,
             DueDate = triggered.AddDays(3), Status = FollowUpStatus.Contacted, Priority = PriorityLevel.High, EstimatedValue = value,
-            AssignedToUserId = _staff[1].Id, ContactAttempts = 1, LastContactedAt = contactedAt, CreatedAt = contactedAt.AddMinutes(-5),
+            AssignedToUserId = _staff[0].Id, ContactAttempts = 1, LastContactedAt = contactedAt, CreatedAt = contactedAt.AddMinutes(-5),
             Outcome = "Sent WhatsApp follow-up"
         };
         _followUps.Add(f);
@@ -840,7 +844,7 @@ public sealed class DemoDataSeeder(AppDbContext db, IPasswordHasher<User> hasher
             Body = p.PreferredLanguage == "ar"
                 ? $"مرحباً {p.FullNameAr}، أوصى طبيب الأسنان بخطة علاج. يسعدنا مساعدتك في حجز موعدك القادم. — عيادة سمايل لاين"
                 : $"Hello {p.FullName}, your dentist recommended a treatment plan. We would be happy to help you schedule your next appointment. — Smile Line Dental Clinic",
-            SentAt = contactedAt, CreatedAt = contactedAt, SentById = _staff[1].Id, FollowUpId = f.Id
+            SentAt = contactedAt, CreatedAt = contactedAt, SentById = _staff[0].Id, FollowUpId = f.Id
         });
         return f;
     }

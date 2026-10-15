@@ -56,7 +56,7 @@ public class ProvisioningTests
         app.ActAs(session.User.Clinic.Id, session.User.Id);
         using var scope = app.NewScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Assert.Equal(4, await db.Roles.CountAsync());
+        Assert.Equal([SystemRoles.Admin, SystemRoles.Dentist], (await db.Roles.Select(r => r.Name).ToListAsync()).Order());
         Assert.Single(await db.Users.ToListAsync());
         Assert.Single(await db.ClinicSettings.ToListAsync());
         Assert.True(await db.Procedures.CountAsync() > 20);

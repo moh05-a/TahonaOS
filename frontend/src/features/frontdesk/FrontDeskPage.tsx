@@ -15,7 +15,7 @@ import { Badge, Card, CardHeader, EmptyState, ErrorState, LoadingBlock, PageHead
 import { AppointmentStatusBadge } from '@/components/StatusBadge'
 import { PatientPicker, type PickedPatient } from '@/components/PatientPicker'
 import { AppointmentDialog, type AppointmentDraft } from '@/features/appointments/AppointmentDialog'
-import { RecordPaymentDialog } from '@/features/billing/RecordPaymentDialog'
+import { RecordPaymentDialog, type PreparedCharge } from '@/features/billing/RecordPaymentDialog'
 import { PatientFormDialog } from '@/features/patients/PatientFormDialog'
 import { SendMessageDialog } from '@/features/messages/SendMessageDialog'
 
@@ -35,6 +35,7 @@ export default function FrontDeskPage() {
   const [found, setFound] = useState<PickedPatient | null>(null)
   const [booking, setBooking] = useState<AppointmentDraft | null>(null)
   const [paying, setPaying] = useState<PickedPatient | null>(null)
+  const [charge, setCharge] = useState<PreparedCharge | undefined>(undefined)
   const [messaging, setMessaging] = useState<PickedPatient | null>(null)
   const [registering, setRegistering] = useState(false)
   const searchBox = useRef<HTMLDivElement>(null)
@@ -116,7 +117,11 @@ export default function FrontDeskPage() {
               {d.appointments.map((row) => (
                 <Row key={row.appointment.id} row={row} canManage={canManage} canPay={can(Permissions.PaymentsManage)} busy={setStatus.isPending && setStatus.variables?.id === row.appointment.id}
                   onStatus={(status) => setStatus.mutate({ id: row.appointment.id, status })}
-                  onPay={() => setPaying({ id: row.appointment.patientId, fullName: row.appointment.patientName, fullNameAr: row.appointment.patientNameAr, phone: row.appointment.patientPhone })}
+                  onPay={(withFee) => {
+                    const a = row.appointment
+                    setCharge(withFee && a.fee != null ? { description: a.treatment, total: a.fee, appointmentId: a.id } : undefined)
+                    setPaying({ id: a.patientId, fullName: a.patientName, fullNameAr: a.patientNameAr, phone: a.patientPhone })
+                  }}
                   onMessage={() => setMessaging({ id: row.appointment.patientId, fullName: row.appointment.patientName, fullNameAr: row.appointment.patientNameAr, phone: row.appointment.patientPhone })} />
               ))}
             </ul>
@@ -131,7 +136,7 @@ export default function FrontDeskPage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Link to={`/patients/${found.id}`}><Button size="sm" variant="outline">{t('frontDesk.openFile')}</Button></Link>
                 {canManage && <Button size="sm" variant="outline" icon={<CalendarPlus className="size-3.5" />} onClick={() => setBooking({ patient: found })}>{t('frontDesk.book')}</Button>}
-                {can(Permissions.PaymentsManage) && <Button size="sm" variant="outline" icon={<CircleDollarSign className="size-3.5" />} onClick={() => setPaying(found)}>{t('frontDesk.takePayment')}</Button>}
+                {can(Permissions.PaymentsManage) && <Button size="sm" variant="outline" icon={<CircleDollarSign className="size-3.5" />} onClick={() => { setCharge(undefined); setPaying(found) }}>{t('frontDesk.takePayment')}</Button>}
                 {can(Permissions.MessagesSend) && <Button size="sm" variant="outline" icon={<MessageCircle className="size-3.5" />} onClick={() => setMessaging(found)}>{t('frontDesk.message')}</Button>}
               </div>
             )}
@@ -147,7 +152,7 @@ export default function FrontDeskPage() {
       </div>
 
       {booking && <AppointmentDialog open onClose={() => setBooking(null)} draft={booking} onSaved={refresh} />}
-      <RecordPaymentDialog open={!!paying} onClose={() => { setPaying(null); refresh() }} patient={paying} />
+      <RecordPaymentDialog open={!!paying} onClose={() => { setPaying(null); setCharge(undefined); refresh() }} patient={paying} charge={charge} />
       <SendMessageDialog open={!!messaging} onClose={() => setMessaging(null)} patient={messaging} />
       <PatientFormDialog open={registering} onClose={() => setRegistering(false)} onSaved={(id) => navigate(`/patients/${id}`)} />
     </div>
@@ -156,12 +161,15 @@ export default function FrontDeskPage() {
 
 function Row({ row, canManage, canPay, busy, onStatus, onPay, onMessage }: {
   row: FrontDeskAppointment; canManage: boolean; canPay: boolean; busy: boolean
-  onStatus: (s: AppointmentStatus) => void; onPay: () => void; onMessage: () => void
+  onStatus: (s: AppointmentStatus) => void; onPay: (withFee: boolean) => void; onMessage: () => void
 }) {
   const { t } = useTranslation()
   const a = row.appointment
   const next = nextStep[a.status]
   const finished = a.status === 'Completed' || a.status === 'Cancelled' || a.status === 'NoShow'
+  // The agreed price can be taken once; after that the visit's invoice counts towards what the patient owes.
+  const feeDue = a.fee != null && a.fee > 0 && !a.feeInvoiceId && a.status !== 'Cancelled' && a.status !== 'NoShow'
+  const feePaid = !!a.feeInvoiceId && (a.feeBalance ?? 0) <= 0
   return (
     <li className={cn('flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3', finished && 'opacity-60')}>
       <div className="w-16 shrink-0">
@@ -175,15 +183,19 @@ function Row({ row, canManage, canPay, busy, onStatus, onPay, onMessage }: {
           {a.hasMedicalAlert && <span title={t('frontDesk.medicalAlert')} className="text-critical"><HeartPulse className="size-4" aria-label={t('frontDesk.medicalAlert')} /></span>}
           {row.isLate && <Badge tone="warning">{t('frontDesk.late')}</Badge>}
           {row.patientBalance != null && row.patientBalance > 0 && <Badge tone="critical">{t('frontDesk.owes', { amount: money(row.patientBalance) })}</Badge>}
+          {feePaid && <Badge tone="good">{t('frontDesk.feePaid')}</Badge>}
         </p>
-        <p className="mt-0.5 truncate text-xs text-ink-3">{a.treatment} · {a.dentistName} · <span className="ltr">{a.patientPhone}</span></p>
+        <p className="mt-0.5 truncate text-xs text-ink-3">
+          {a.treatment}{a.fee != null && <> · <span className="tabular font-medium text-ink-2">{money(a.fee)}</span></>} · {a.dentistName} · <span className="ltr">{a.patientPhone}</span>
+        </p>
       </div>
       <AppointmentStatusBadge status={a.status} />
       <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
         {canManage && a.status === 'Scheduled' && <Button size="sm" variant="ghost" loading={busy} onClick={() => onStatus('Confirmed')}>{t('frontDesk.confirm')}</Button>}
         {canManage && next && <Button size="sm" loading={busy} onClick={() => onStatus(next)}>{t(`frontDesk.step.${next}`)}</Button>}
         {canManage && row.isLate && <Button size="sm" variant="outline" loading={busy} onClick={() => onStatus('NoShow')}>{t('frontDesk.noShow')}</Button>}
-        {canPay && row.patientBalance != null && row.patientBalance > 0 && <Button size="sm" variant="outline" icon={<CircleDollarSign className="size-3.5" />} onClick={onPay}>{t('frontDesk.takePayment')}</Button>}
+        {canPay && feeDue && <Button size="sm" variant="outline" icon={<CircleDollarSign className="size-3.5" />} onClick={() => onPay(true)}>{t('frontDesk.takeFee', { amount: money(a.fee!) })}</Button>}
+        {canPay && !feeDue && row.patientBalance != null && row.patientBalance > 0 && <Button size="sm" variant="outline" icon={<CircleDollarSign className="size-3.5" />} onClick={() => onPay(false)}>{t('frontDesk.takePayment')}</Button>}
         {!finished && <Button size="icon" variant="ghost" aria-label={t('frontDesk.message')} onClick={onMessage}><MessageCircle className="size-4" /></Button>}
       </div>
     </li>

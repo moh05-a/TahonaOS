@@ -22,8 +22,11 @@ const NEW_CHARGE = 'new'
  * Records a payment against one invoice, spreads it over the patient's oldest open invoices, or, when the
  * payment is for something not invoiced yet, creates the invoice together with the payment.
  */
-export function RecordPaymentDialog({ open, onClose, patient: initialPatient, invoiceId: initialInvoice }: {
-  open: boolean; onClose: () => void; patient?: PickedPatient | null; invoiceId?: string
+/** A charge prepared elsewhere, such as an appointment's agreed price. */
+export interface PreparedCharge { description: string; total: number; appointmentId: string }
+
+export function RecordPaymentDialog({ open, onClose, patient: initialPatient, invoiceId: initialInvoice, charge }: {
+  open: boolean; onClose: () => void; patient?: PickedPatient | null; invoiceId?: string; charge?: PreparedCharge
 }) {
   const { t, i18n } = useTranslation()
   const { can } = useAuth()
@@ -46,15 +49,17 @@ export function RecordPaymentDialog({ open, onClose, patient: initialPatient, in
   useEffect(() => {
     if (!open) return
     setPatient(initialPatient ?? null)
-    setInvoiceId(initialInvoice ?? '')
-    setAmount('')
+    setInvoiceId(charge ? NEW_CHARGE : initialInvoice ?? '')
+    setAmount(charge ? String(charge.total) : '')
     setMethod('Cash')
     setPaidOn(isoDateInClinic())
     setReference('')
     setNotes('')
-    resetCharge()
+    setProcedureId('')
+    setDescription(charge?.description ?? '')
+    setChargeTotal(charge ? String(charge.total) : '')
     setError(null)
-  }, [open, initialPatient, initialInvoice])
+  }, [open, initialPatient, initialInvoice, charge])
 
   const invoices = useQuery({
     queryKey: ['open-invoices', patient?.id],
@@ -89,7 +94,10 @@ export function RecordPaymentDialog({ open, onClose, patient: initialPatient, in
       patientId: patient!.id, invoiceId: charging ? null : invoiceId || null, amount: Number(amount), method,
       paidAt: paidOn === isoDateInClinic() ? null : clinicLocalToUtc(`${paidOn}T12:00`),
       reference: reference || null, notes: notes || null,
-      newCharge: charging ? { description: description.trim(), procedureId: procedureId || null, total: chargeValue, dentistId: null } : null,
+      newCharge: charging ? {
+        description: description.trim(), procedureId: procedureId || null, total: chargeValue, dentistId: null,
+        appointmentId: charge && invoiceId === NEW_CHARGE ? charge.appointmentId : null,
+      } : null,
     }),
     onSuccess: (r) => {
       toast.success(t('billing.paymentRecorded'), {

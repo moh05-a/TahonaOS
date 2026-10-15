@@ -109,6 +109,7 @@ const en = {
     reminderSent: 'Reminder sent', rescheduled: 'Appointment moved', fromRecovery: 'Booked from recovery', selectPatient: 'Search patient…',
     upcoming: 'Upcoming', past: 'Past', empty: 'No appointments', created: 'Appointment booked',
     closed: { holiday: 'The clinic is marked as closed on this date. You can still book if this is intended.', dayOff: 'This is not one of the clinic’s working days. You can still book if this is intended.' },
+    fee: 'Price', feeHint: 'What the patient pays for this visit. Filled in from the price list; you can change it. Nothing is charged until the payment is taken.', feeInvalid: 'Enter a price of zero or more.',
   },
   plans: {
     title: 'Treatment Plans', new: 'New treatment plan', edit: 'Edit plan', planTitle: 'Plan title', items: 'Treatment items',
@@ -342,6 +343,7 @@ const en = {
     followUpsDue: '{{count}} patients to follow up',
     followUpsBody: 'Missed visits, unfinished treatment and overdue balances waiting for a call or message.',
     closed: { holiday: 'Today is marked as a closed day in Settings.', dayOff: 'Today is not one of the clinic’s working days.' },
+    takeFee: 'Take {{amount}}', feePaid: 'Paid',
   },
   enum: {
     AppointmentStatus: { Scheduled: 'Scheduled', Confirmed: 'Confirmed', Arrived: 'Arrived', InTreatment: 'In treatment', Completed: 'Completed', Cancelled: 'Cancelled', NoShow: 'No-show' },

@@ -111,6 +111,7 @@ const ar: Dictionary = {
     reminderSent: 'تم إرسال التذكير', rescheduled: 'تم نقل الموعد', fromRecovery: 'محجوز من الاسترداد', selectPatient: 'ابحث عن مريض…',
     upcoming: 'القادمة', past: 'السابقة', empty: 'لا توجد مواعيد', created: 'تم حجز الموعد',
     closed: { holiday: 'العيادة مسجّلة كمغلقة في هذا التاريخ. يمكنك الحجز إن كان ذلك مقصوداً.', dayOff: 'هذا ليس من أيام عمل العيادة. يمكنك الحجز إن كان ذلك مقصوداً.' },
+    fee: 'السعر', feeHint: 'ما يدفعه المريض مقابل هذه الزيارة. يُعبّأ من قائمة الأسعار ويمكنك تغييره. لا يُسجَّل أي مبلغ على المريض حتى تُستلم الدفعة.', feeInvalid: 'أدخل سعرًا يساوي صفرًا أو أكثر.',
   },
   plans: {
     title: 'خطط العلاج', new: 'خطة علاج جديدة', edit: 'تعديل الخطة', planTitle: 'عنوان الخطة', items: 'بنود العلاج',
@@ -344,6 +345,7 @@ const ar: Dictionary = {
     followUpsDue: '{{count}} مرضى بحاجة إلى متابعة',
     followUpsBody: 'زيارات فائتة وعلاجات غير مكتملة وأرصدة متأخرة بانتظار اتصال أو رسالة.',
     closed: { holiday: 'اليوم مسجّل كيوم إغلاق في الإعدادات.', dayOff: 'اليوم ليس من أيام عمل العيادة.' },
+    takeFee: 'استلام {{amount}}', feePaid: 'مدفوع',
   },
   enum: {
     AppointmentStatus: { Scheduled: 'مجدول', Confirmed: 'مؤكد', Arrived: 'وصل', InTreatment: 'قيد العلاج', Completed: 'مكتمل', Cancelled: 'ملغى', NoShow: 'لم يحضر' },

@@ -72,6 +72,29 @@ public class PaymentCorrectionTests
     }
 
     [Fact]
+    public async Task A_dentist_records_and_corrects_payments_but_cancelling_and_refunding_stay_with_the_admin()
+    {
+        var dentist = SystemRoles.DefaultPermissions[SystemRoles.Dentist];
+        Assert.Contains(Permissions.PaymentsManage, dentist);
+        Assert.DoesNotContain(Permissions.PaymentsRefund, dentist);
+        Assert.Equal([SystemRoles.Admin, SystemRoles.Dentist], SystemRoles.DefaultPermissions.Keys.Order());
+
+        using var app = new TestApp();
+        await app.AddClinicAsync();
+        var patient = await app.AddPatientAsync("Sara");
+        app.User.Granted.Clear();
+        app.User.Granted.UnionWith(dentist);
+        var payments = app.Get<PaymentService>();
+
+        var paid = await payments.RecordAsync(PayNewCharge(patient, 40, 40), None);
+        await payments.UpdateAsync(paid.PaymentIds[0], new UpdatePaymentRequest(PaymentMethod.Card, new DateTimeOffset(app.Clock.UtcNow), "POS-1", null), None);
+        Assert.Equal(PaymentMethod.Card, (await app.Db.Payments.SingleAsync()).Method);
+
+        // Leaving part of a new charge unpaid is an invoicing decision, which dentists do not have.
+        await Assert.ThrowsAsync<BusinessRuleException>(() => payments.RecordAsync(PayNewCharge(patient, 10, 40), None));
+    }
+
+    [Fact]
     public async Task Correcting_an_entry_changes_its_details_but_never_its_amount()
     {
         using var app = new TestApp();

@@ -27,7 +27,7 @@ It supports English and Arabic with full RTL, uses JOD and the Asia/Amman time z
 
 | Area | What it does |
 |---|---|
-| **Front desk** | Today's list with one-click confirm, check-in, start, complete and no-show. Late patients and balances are flagged, and reception can find, register, book, take a payment and message without leaving the page. |
+| **Front desk** | Today's list with one-click confirm, check-in, start, complete and no-show. Late patients and balances are flagged, and staff can find, register, book, take a payment and message without leaving the page. A visit booked with a price shows it, with one click to take it. |
 | **Switching** | Sign-up by invitation, a getting-started checklist, and an import centre for patients, appointments, treatment plans and outstanding balances from CSV or Excel. Columns are matched from English or Arabic headers, every row is checked before anything is saved, duplicates are shown for a decision, and an import can be undone. |
 | **Your data** | A full export at any time: one ZIP of CSV files with a manifest, optionally with uploaded files. It stays available if the subscription lapses. |
 | **Revenue Recovery** | Detects six leak types, ranks patients with an explainable 0–100 score, and supports one-click WhatsApp or call outreach, booking, and outcome logging. Every item shows the record that raised it, the contacts made and the outcome. Potential value is shown as an estimate, and payments are counted as collected after follow-up only when they are for the matter the clinic followed up on. An owner report puts the last 30 days beside the 30 before. See [docs/RECOVERY_ALGORITHM.md](docs/RECOVERY_ALGORITHM.md). |
@@ -36,7 +36,7 @@ It supports English and Arabic with full RTL, uses JOD and the Asia/Amman time z
 | **Patients** | Full profile (Arabic name, medical alerts, insurance, emergency contact) with a journey timeline and tabs for appointments, chart, plans, history, invoices, payments, notes, documents, and communications. |
 | **Dental chart** | Interactive odontogram with FDI numbering, adult and pediatric. Twelve condition types, each shown with both a colour and a glyph. Surfaces, per-tooth history and notes, and "create plan from tooth". Completed procedures update the chart automatically. |
 | **Treatment plans** | Draft → Presented → Accepted → In progress → Partially completed / Completed / Rejected. Shows paid and remaining amounts, completion %, next appointment, item completion (which writes treatment history), and invoicing from the plan. |
-| **Appointments** | Day, week, and month calendar in clinic time. Drag to move, resize to change duration, select a slot to create. Dentist filter and colours, a status workflow (confirm → check-in → in treatment → complete / no-show / cancel), double-booking protection, and reminders. |
+| **Appointments** | Day, week, and month calendar in clinic time. Each booking can carry the price the patient will pay, filled in from the price list; nothing is charged until the payment is taken. Drag to move, resize to change duration, select a slot to create. Dentist filter and colours, a status workflow (confirm → check-in → in treatment → complete / no-show / cancel), double-booking protection, and reminders. |
 | **Billing** | Invoices (draft or issued, tax, discounts, void), partial payments with automatic oldest-first allocation, payment for a visit that has no invoice yet (the invoice is created with it), correction of a payment entry, cancellation of an entry made by mistake (kept on record), refunds, cash / card / CliQ / bank transfer, outstanding balances, expenses, and a printable invoice. |
 | **Reports** | Acceptance and completion rates, return rate, no-show rate, average treatment value, recovery metrics, P&L, production by dentist and category, top procedures, and payment methods. |
 | **AI Revenue Assistant** | Answers questions about clinic data using read-only, tenant-scoped query tools. It never invents data: every answer shows the source rows. By default the AI provider receives file numbers, not patient names or phone numbers. Uses Google Gemini or Claude when an API key is set, otherwise a built-in rule-based mode. |
@@ -86,9 +86,7 @@ All demo users share the password from `SEED__DEMOPASSWORD` in your `.env`.
 | Email | Role | Sees |
 |---|---|---|
 | `admin@tahona.demo` | Admin (also a dentist) | Everything |
-| `reception@tahona.demo` | Receptionist | Patients, appointments, payments, recovery outreach, messages |
-| `dentist@tahona.demo` | Dentist | Patients, chart, treatment plans, clinical notes |
-| `accountant@tahona.demo` | Accountant | Invoices, payments, expenses, reports |
+| `dentist@tahona.demo` | Dentist | Patients, chart, treatment plans, clinical notes, recording payments |
 
 Three more dentists are seeded: `dr.layla@`, `dr.khaled@`, and `dr.noor@tahona.demo`.
 
@@ -176,23 +174,26 @@ Key design decisions are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):
 
 Endpoints require **permissions**, such as `patients.view`, `invoices.manage`, and `recovery.manage`. Roles are just sets of permissions, editable under **Staff → Roles & permissions**. Admin always has every permission.
 
-| | Admin | Dentist | Receptionist | Accountant |
-|---|:-:|:-:|:-:|:-:|
-| Patients (view / create / edit) | ✓ | view, edit | ✓ | view |
-| Appointments | ✓ | ✓ | ✓ | – |
-| Dental chart, treatment plans, clinical notes | ✓ | ✓ | view | view plans |
-| Invoices / refunds / expenses / reports | ✓ | view | payments | ✓ |
-| Revenue Recovery (view / act) | ✓ | view | ✓ | view |
-| Messages & templates | ✓ | view | send | send |
-| Staff, settings, audit log | ✓ | – | – | – |
-| Import data, export data | ✓ | – | – | – |
+Every clinic starts with two roles. A clinic that wants a front-desk or finance role can create its own.
+
+| | Admin | Dentist |
+|---|:-:|:-:|
+| Patients (view / create / edit) | ✓ | view, edit |
+| Appointments | ✓ | ✓ |
+| Dental chart, treatment plans, clinical notes | ✓ | ✓ |
+| Record a payment, correct its details | ✓ | ✓ |
+| Cancel or refund a payment, invoices, expenses, reports | ✓ | view only |
+| Revenue Recovery (view / act) | ✓ | view |
+| Messages & templates | ✓ | view |
+| Staff, settings, audit log | ✓ | – |
+| Import data, export data | ✓ | – |
 
 The API enforces these permissions. The UI also hides actions the user can't take.
 
 ## Testing
 
 ```bash
-cd backend && dotnet test          # 174 tests
+cd backend && dotnet test          # 178 tests
 cd frontend && npx tsc -b          # type-check
 ```
 

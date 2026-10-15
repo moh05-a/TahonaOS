@@ -66,6 +66,10 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<decimal?>("Fee")
+                        .HasPrecision(14, 3)
+                        .HasColumnType("numeric(14,3)");
+
                     b.Property<Guid?>("FollowUpId")
                         .HasColumnType("uuid");
 
@@ -1075,6 +1079,9 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasPrecision(14, 3)
                         .HasColumnType("numeric(14,3)");
 
+                    b.Property<Guid?>("AppointmentId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal>("Balance")
                         .HasPrecision(14, 3)
                         .HasColumnType("numeric(14,3)");
@@ -1140,6 +1147,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId");
 
                     b.HasIndex("DentistId");
 
@@ -2580,6 +2589,11 @@ namespace Tahona.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Tahona.Domain.Entities.Invoice", b =>
                 {
+                    b.HasOne("Tahona.Domain.Entities.Appointment", "Appointment")
+                        .WithMany("Invoices")
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Tahona.Domain.Entities.Dentist", "Dentist")
                         .WithMany()
                         .HasForeignKey("DentistId")
@@ -2595,6 +2609,8 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TreatmentPlanId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Appointment");
 
                     b.Navigation("Dentist");
 
@@ -2866,6 +2882,11 @@ namespace Tahona.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Tahona.Domain.Entities.Appointment", b =>
+                {
+                    b.Navigation("Invoices");
                 });
 
             modelBuilder.Entity("Tahona.Domain.Entities.Clinic", b =>

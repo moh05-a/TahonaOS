@@ -194,7 +194,7 @@ export default function AppointmentsPage() {
           setSelected(null)
           setDraft({
             id: a.id, patient: { id: a.patientId, fullName: a.patientName, fullNameAr: a.patientNameAr, phone: a.patientPhone }, dentistId: a.dentistId,
-            start: a.startTime, durationMinutes: a.durationMinutes, treatment: a.treatment, notes: a.notes, chair: a.chair, treatmentPlanId: a.treatmentPlanId,
+            start: a.startTime, durationMinutes: a.durationMinutes, treatment: a.treatment, notes: a.notes, chair: a.chair, treatmentPlanId: a.treatmentPlanId, fee: a.fee,
           })
         }}
         onOpenPatient={(a) => navigate(`/patients/${a.patientId}`)}

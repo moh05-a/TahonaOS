@@ -82,7 +82,7 @@ function UserDialog({ user, roles, onClose }: { user: StaffUser | null | undefin
   useEffect(() => {
     if (user === undefined) return
     setF(user ? { email: user.email, fullName: user.fullName, fullNameAr: user.fullNameAr ?? '', phone: user.phone ?? '', roleId: user.roleId, password: '', isActive: user.isActive, createDentist: false, specialty: '', color: '#0ea5e9' }
-      : { email: '', fullName: '', fullNameAr: '', phone: '', roleId: roles.find((r) => r.name === 'Receptionist')?.id ?? roles[0]?.id ?? '', password: '', isActive: true, createDentist: false, specialty: '', color: '#0ea5e9' })
+      : { email: '', fullName: '', fullNameAr: '', phone: '', roleId: roles.find((r) => r.name === 'Dentist')?.id ?? roles[0]?.id ?? '', password: '', isActive: true, createDentist: false, specialty: '', color: '#0ea5e9' })
   }, [user, roles])
 
   const save = useMutation({

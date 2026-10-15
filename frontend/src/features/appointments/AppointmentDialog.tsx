@@ -22,6 +22,7 @@ export interface AppointmentDraft {
   notes?: string
   chair?: string
   treatmentPlanId?: string
+  fee?: number
   followUpId?: string
   fromRecovery?: boolean
 }
@@ -42,6 +43,7 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
   const [notes, setNotes] = useState('')
   const [chair, setChair] = useState('')
   const [planId, setPlanId] = useState('')
+  const [fee, setFee] = useState('')
   const [allowOverlap, setAllowOverlap] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [conflict, setConflict] = useState<string | null>(null)
@@ -56,6 +58,7 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
     setNotes(draft.notes ?? '')
     setChair(draft.chair ?? '')
     setPlanId(draft.treatmentPlanId ?? '')
+    setFee(draft.fee != null ? String(draft.fee) : '')
     setAllowOverlap(false)
     setErrors({})
     setConflict(null)
@@ -84,6 +87,7 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
       const body = {
         patientId: patient!.id, dentistId, startTime: clinicLocalToUtc(start), durationMinutes: duration, treatment: treatment.trim(),
         notes: notes || null, chair: chair || null, treatmentPlanId: planId || null, followUpId: draft.followUpId ?? null, allowOverlap,
+        fee: fee.trim() === '' ? null : Number(fee),
       }
       return draft.id ? api.put<Appointment>(`/appointments/${draft.id}`, body) : api.post<Appointment>('/appointments', body)
     },
@@ -93,6 +97,7 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
       void qc.invalidateQueries({ queryKey: ['dashboard'] })
       void qc.invalidateQueries({ queryKey: ['recovery'] })
       void qc.invalidateQueries({ queryKey: ['patient'] })
+      void qc.invalidateQueries({ queryKey: ['front-desk'] })
       onSaved?.(a)
       onClose()
     },
@@ -109,6 +114,7 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
     if (!dentistId) errs.dentistId = t('common.required')
     if (!start) errs.startTime = t('common.required')
     if (!treatment.trim()) errs.treatment = t('common.required')
+    if (fee.trim() !== '' && !(Number(fee) >= 0)) errs.fee = t('appointments.feeInvalid')
     setErrors(errs)
     if (Object.keys(errs).length === 0) save.mutate()
   }
@@ -148,13 +154,19 @@ export function AppointmentDialog({ open, onClose, draft, onSaved }: {
             onChange={(e) => {
               setTreatment(e.target.value)
               const p = procedures.data?.find((x) => x.name === e.target.value)
-              if (p) setDuration(p.defaultDurationMinutes)
+              if (p) {
+                setDuration(p.defaultDurationMinutes)
+                setFee(String(p.defaultPrice))
+              }
             }}
             invalid={!!errors.treatment}
           />
           <datalist id="procedure-names">
             {procedures.data?.map((p) => <option key={p.id} value={p.name} />)}
           </datalist>
+        </Field>
+        <Field label={t('appointments.fee')} error={errors.fee} hint={t('appointments.feeHint')}>
+          <Input type="number" inputMode="decimal" min={0} step="0.001" value={fee} onChange={(e) => setFee(e.target.value)} invalid={!!errors.fee} />
         </Field>
         <Field label={t('appointments.duration')} error={errors.durationMinutes}>
           <Select value={duration} onChange={(e) => setDuration(Number(e.target.value))}>

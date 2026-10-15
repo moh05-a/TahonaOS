@@ -15,14 +15,15 @@ public record AppointmentDto(
     Guid Id, Guid PatientId, string PatientName, string? PatientNameAr, string PatientPhone, string PatientFileNumber,
     Guid DentistId, string DentistName, string DentistColor, DateTime StartTime, DateTime EndTime,
     string Treatment, AppointmentStatus Status, string? Notes, string? Chair, Guid? TreatmentPlanId,
-    bool FromRecovery, DateTime? ReminderSentAt, bool HasMedicalAlert)
+    bool FromRecovery, DateTime? ReminderSentAt, bool HasMedicalAlert,
+    decimal? Fee = null, Guid? FeeInvoiceId = null, decimal? FeeBalance = null)
 {
     public int DurationMinutes => (int)(EndTime - StartTime).TotalMinutes;
 }
 
 public record AppointmentUpsertRequest(
     Guid PatientId, Guid DentistId, DateTimeOffset StartTime, int DurationMinutes, string Treatment,
-    string? Notes, string? Chair, Guid? TreatmentPlanId, Guid? FollowUpId, bool AllowOverlap = false);
+    string? Notes, string? Chair, Guid? TreatmentPlanId, Guid? FollowUpId, bool AllowOverlap = false, decimal? Fee = null);
 
 public record RescheduleRequest(DateTimeOffset StartTime, DateTimeOffset EndTime, Guid? DentistId, bool AllowOverlap = false);
 
@@ -38,6 +39,7 @@ public class AppointmentUpsertValidator : AbstractValidator<AppointmentUpsertReq
         RuleFor(x => x.Treatment).NotEmpty().MaximumLength(150);
         RuleFor(x => x.Notes).MaximumLength(2000);
         RuleFor(x => x.Chair).MaximumLength(30);
+        RuleFor(x => x.Fee).InclusiveBetween(0, 999_999).When(x => x.Fee is not null);
     }
 }
 
@@ -104,7 +106,8 @@ public class AppointmentService(
                 Treatment = request.Treatment.Trim(),
                 Notes = request.Notes?.Trim(),
                 Chair = request.Chair?.Trim(),
-                TreatmentPlanId = request.TreatmentPlanId
+                TreatmentPlanId = request.TreatmentPlanId,
+                Fee = request.Fee is null ? null : Money.Round(request.Fee.Value)
             };
             db.Appointments.Add(created);
 
@@ -155,6 +158,7 @@ public class AppointmentService(
             appt.Notes = request.Notes?.Trim();
             appt.Chair = request.Chair?.Trim();
             appt.TreatmentPlanId = request.TreatmentPlanId;
+            appt.Fee = request.Fee is null ? null : Money.Round(request.Fee.Value);
             if (appt.Status == AppointmentStatus.NoShow && start > clock.UtcNow) appt.Status = AppointmentStatus.Scheduled;
             return await db.SaveChangesAsync(ct);
         }, ct);
@@ -301,5 +305,8 @@ public class AppointmentService(
         a.Id, a.PatientId, a.Patient.FullName, a.Patient.FullNameAr, a.Patient.Phone, a.Patient.FileNumber,
         a.DentistId, a.Dentist.FullName, a.Dentist.Color, a.StartTime, a.EndTime, a.Treatment, a.Status, a.Notes, a.Chair, a.TreatmentPlanId,
         a.FollowUpId != null, a.ReminderSentAt,
-        a.Patient.Allergies != null || a.Patient.MedicalConditions != null));
+        a.Patient.Allergies != null || a.Patient.MedicalConditions != null,
+        a.Fee,
+        a.Invoices.Where(i => i.Status != InvoiceStatus.Void).Select(i => (Guid?)i.Id).FirstOrDefault(),
+        a.Invoices.Where(i => i.Status != InvoiceStatus.Void).Select(i => (decimal?)i.Balance).FirstOrDefault()));
 }

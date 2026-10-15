@@ -5,7 +5,7 @@ using Tahona.Domain.Enums;
 namespace Tahona.Application.Features.Provisioning;
 
 /// <summary>
-/// What every new clinic starts with: the four system roles, a starter procedure list, bilingual message templates
+/// What every new clinic starts with: the two system roles (Admin and Dentist), a starter procedure list, bilingual message templates
 /// and the follow-up rules. Used by clinic provisioning and by the demo seeder, so both begin from the same baseline.
 /// The procedure prices are placeholders for the clinic to replace with its own price list.
 /// </summary>
@@ -14,13 +14,9 @@ public static class ClinicDefaults
     public static List<Role> Roles(Guid clinicId) => SystemRoles.DefaultPermissions.Select(kv => new Role
     {
         ClinicId = clinicId, Name = kv.Key, IsSystem = true, Permissions = kv.Value.ToList(),
-        Description = kv.Key switch
-        {
-            SystemRoles.Admin => "Full access to every module and setting",
-            SystemRoles.Dentist => "Clinical work: charts, treatment plans, notes",
-            SystemRoles.Receptionist => "Front desk: patients, appointments, payments, recovery calls",
-            _ => "Finance: invoices, payments, expenses, reports"
-        }
+        Description = kv.Key == SystemRoles.Admin
+            ? "Full access to every module and setting"
+            : "Clinical work (charts, treatment plans, notes) and recording payments"
     }).ToList();
 
     public static List<Procedure> Procedures(Guid clinicId)

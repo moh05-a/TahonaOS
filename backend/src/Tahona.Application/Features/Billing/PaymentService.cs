@@ -73,9 +73,23 @@ public class PaymentService(
             if (charge.ProcedureId is not null && !await db.Procedures.AnyAsync(p => p.Id == charge.ProcedureId, ct))
                 throw RequestValidationException.For("newCharge.procedureId", "Procedure not found.");
 
-            var created = await invoices.BuildInvoiceAsync(request.PatientId, charge.DentistId, null,
+            var dentistId = charge.DentistId;
+            if (charge.AppointmentId is not null)
+            {
+                var appointment = await db.Appointments.Where(a => a.Id == charge.AppointmentId && a.PatientId == request.PatientId)
+                                      .Select(a => new { a.DentistId }).FirstOrDefaultAsync(ct)
+                                  ?? throw RequestValidationException.For("newCharge.appointmentId", "Appointment not found for this patient.");
+                var existing = await db.Invoices.Where(i => i.AppointmentId == charge.AppointmentId && i.Status != InvoiceStatus.Void)
+                    .Select(i => i.InvoiceNumber).FirstOrDefaultAsync(ct);
+                if (existing is not null)
+                    throw new BusinessRuleException($"This visit is already invoiced as {existing}. Take the payment against that invoice.");
+                dentistId ??= appointment.DentistId;
+            }
+
+            var created = await invoices.BuildInvoiceAsync(request.PatientId, dentistId, null,
                 [new InvoiceItemRequest(charge.Description, charge.ProcedureId, null, null, 1, charge.Total, 0)], 0, null, null, false, ct);
             if (paidAt < created.IssueDate) created.IssueDate = paidAt;
+            created.AppointmentId = charge.AppointmentId;
             if (request.Amount > created.Total)
                 throw RequestValidationException.For("amount", $"Amount exceeds the charge ({created.Total:0.000}).");
             // Leaving part of a new charge unpaid creates a debt, which is an invoicing decision.
