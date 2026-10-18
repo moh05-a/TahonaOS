@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/public/brand/tahona-logo-horizontal-dark.png" />
+    <img src="frontend/public/brand/tahona-logo-horizontal.svg" alt="Tahona" width="320" />
+  </picture>
+</p>
+
 # Tahona — Dental Clinic OS
 
 Tahona is a dental clinic management system for independent clinics in Jordan and the wider MENA region. It handles patients, appointments, the dental chart, treatment plans, billing, and reports. It is built to be easy to switch to, quick to use every day, and honest about the follow-up work that brings patients and payments back.

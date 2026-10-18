@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import {
   BarChart3, Bot, CalendarDays, ClipboardList, ConciergeBell, CreditCard, FileText, LayoutDashboard, ListChecks, MessageCircle, Settings, Smile, Sparkles,
-  Stethoscope, Upload, Users, UserCog,
+  Upload, Users, UserCog,
 } from 'lucide-react'
+import { TahonaLogo } from '@/components/brand/TahonaLogo'
 import { useAuth } from '@/auth/AuthProvider'
 import { api } from '@/lib/api'
 import { cn, Permissions, type Permission } from '@/lib/utils'
@@ -13,7 +14,7 @@ import type { RecoveryDashboard } from '@/lib/types'
 interface NavItem { to: string; label: string; icon: React.ElementType; permission: Permission; recovery?: boolean }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { can, user } = useAuth()
 
   const toContact = useQuery({
@@ -69,14 +70,8 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <aside className="flex h-full w-64 flex-col border-e border-line bg-surface">
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <span className="grid size-9 place-items-center rounded-xl bg-primary text-white shadow-sm">
-          <Stethoscope className="size-5" />
-        </span>
-        <div className="min-w-0 leading-tight">
-          <p className="text-sm font-semibold text-ink">{t('app.name')}</p>
-          <p className="truncate text-[11px] text-ink-3">{user?.clinic.name}</p>
-        </div>
+      <div className="flex h-16 items-center px-5">
+        <TahonaLogo size={30} lang={i18n.language === 'ar' ? 'ar' : 'en'} subtitle={user?.clinic.name} />
       </div>
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-3">

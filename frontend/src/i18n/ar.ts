@@ -1,7 +1,7 @@
 import type { Dictionary } from './en'
 
 const ar: Dictionary = {
-  app: { name: 'Tahona', tagline: 'نظام إدارة عيادات الأسنان' },
+  app: { name: 'طاحونة', tagline: 'نظام إدارة عيادات الأسنان' },
   nav: {
     dashboard: 'لوحة التحكم', appointments: 'المواعيد', patients: 'المرضى', treatmentPlans: 'خطط العلاج',
     recovery: 'استرداد الإيرادات', dentalChart: 'مخطط الأسنان', invoices: 'الفواتير', payments: 'المدفوعات', reports: 'التقارير',

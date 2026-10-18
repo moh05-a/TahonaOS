@@ -4,7 +4,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
-import { CalendarCheck2, Languages, MessageCircle, Sparkles, Stethoscope, TrendingUp } from 'lucide-react'
+import { CalendarCheck2, Languages, MessageCircle, Sparkles, TrendingUp } from 'lucide-react'
+import { TahonaLogo } from '@/components/brand/TahonaLogo'
 import { useAuth } from '@/auth/AuthProvider'
 import { applyLanguage } from '@/i18n'
 import { errorMessage } from '@/lib/api'
@@ -52,10 +53,7 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-full lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-recovery-gradient p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-10 place-items-center rounded-xl bg-white/15"><Stethoscope className="size-5" /></span>
-          <span className="text-lg font-semibold">Tahona</span>
-        </div>
+        <TahonaLogo size={36} variant="white" showTagline lang={i18n.language === 'ar' ? 'ar' : 'en'} />
         <div className="max-w-md">
           <h1 className="text-3xl leading-tight font-semibold">{t('auth.heroTitle')}</h1>
           <p className="mt-4 text-white/80">{t('auth.heroBody')}</p>
@@ -75,7 +73,9 @@ export default function LoginPage() {
       </div>
 
       <div className="flex flex-col items-center justify-center p-6 sm:p-12">
-        <div className="mb-8 flex w-full max-w-sm justify-end">
+        <div className="mb-8 flex w-full max-w-sm items-center justify-between lg:justify-end">
+          {/* On a phone the coloured panel is hidden, so the logo sits above the form instead. */}
+          <TahonaLogo size={30} lang={i18n.language === 'ar' ? 'ar' : 'en'} className="lg:hidden" />
           <Button variant="ghost" size="sm" icon={<Languages className="size-4" />} onClick={() => applyLanguage(i18n.language === 'ar' ? 'en' : 'ar')}>
             {i18n.language === 'ar' ? 'English' : 'العربية'}
           </Button>

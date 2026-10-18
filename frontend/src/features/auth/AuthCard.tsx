@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Languages, Stethoscope } from 'lucide-react'
+import { Languages } from 'lucide-react'
+import { TahonaLogo } from '@/components/brand/TahonaLogo'
 import { applyLanguage } from '@/i18n'
 import { Button } from '@/components/ui/Button'
 
@@ -10,10 +11,7 @@ export function AuthCard({ title, subtitle, children }: { title: ReactNode; subt
   return (
     <div className="flex min-h-full flex-col items-center bg-surface-2 px-4 py-10">
       <div className="flex w-full max-w-lg items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="grid size-9 place-items-center rounded-xl bg-primary text-white shadow-sm"><Stethoscope className="size-5" /></span>
-          <span className="text-base font-semibold text-ink">Tahona</span>
-        </div>
+        <TahonaLogo size={30} lang={i18n.language === 'ar' ? 'ar' : 'en'} />
         <Button variant="ghost" size="sm" icon={<Languages className="size-4" />} onClick={() => applyLanguage(i18n.language === 'ar' ? 'en' : 'ar')}>
           {i18n.language === 'ar' ? 'English' : 'العربية'}
         </Button>
